@@ -1,10 +1,17 @@
 import { NextResponse } from "next/server";
+import crypto from "crypto";
 
 import { auth } from "@/auth";
 import { connectDB } from "@/lib/mongodb";
 import Event from "@/models/Event";
 
-function createSlug(value: string): string {
+function createPublicId() {
+  return crypto
+    .randomBytes(12)
+    .toString("hex");
+}
+
+function createSlug(value: string) {
   return value
     .toLowerCase()
     .trim()
@@ -12,18 +19,18 @@ function createSlug(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function createEventCode(name: string): string {
-  const prefix = name
+function createEventCode(value: string) {
+  const clean = value
     .replace(/[^a-zA-Z0-9]/g, "")
-    .slice(0, 4)
+    .toUpperCase()
+    .slice(0, 6);
+
+  const random = crypto
+    .randomBytes(3)
+    .toString("hex")
     .toUpperCase();
 
-  const randomPart = Math.random()
-    .toString(36)
-    .slice(2, 8)
-    .toUpperCase();
-
-  return `${prefix || "EVT"}-${randomPart}`;
+  return `${clean || "EVENT"}-${random}`;
 }
 
 export async function GET() {
@@ -33,10 +40,11 @@ export async function GET() {
     if (!session?.user?.id) {
       return NextResponse.json(
         {
-          success: false,
           message: "Unauthorized",
         },
-        { status: 401 },
+        {
+          status: 401,
+        },
       );
     }
 
@@ -55,118 +63,82 @@ export async function GET() {
       events,
     });
   } catch (error) {
-    console.error("GET /api/events failed:", error);
+    console.error(
+      "GET events error:",
+      error,
+    );
 
     return NextResponse.json(
       {
-        success: false,
         message: "Failed to fetch events.",
       },
-      { status: 500 },
+      {
+        status: 500,
+      },
     );
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(
+  request: Request,
+) {
   try {
     const session = await auth();
 
     if (!session?.user?.id) {
       return NextResponse.json(
         {
-          success: false,
           message: "Unauthorized",
         },
-        { status: 401 },
-      );
-    }
-
-    const body = await request.json();
-
-    const name =
-      typeof body.name === "string"
-        ? body.name.trim()
-        : "";
-
-    const description =
-      typeof body.description === "string"
-        ? body.description.trim()
-        : "";
-
-    const location =
-      typeof body.location === "string"
-        ? body.location.trim()
-        : "";
-
-    const startDate =
-      typeof body.startDate === "string" &&
-      body.startDate
-        ? new Date(`${body.startDate}T00:00:00.000Z`)
-        : undefined;
-
-    const endDate =
-      typeof body.endDate === "string" &&
-      body.endDate
-        ? new Date(`${body.endDate}T23:59:59.999Z`)
-        : undefined;
-
-    const status =
-      body.status === "active"
-        ? "active"
-        : "draft";
-
-    if (!name) {
-      return NextResponse.json(
         {
-          success: false,
-          message: "Event name is required.",
+          status: 401,
         },
-        { status: 400 },
-      );
-    }
-
-    if (
-      startDate &&
-      Number.isNaN(startDate.getTime())
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid start date.",
-        },
-        { status: 400 },
-      );
-    }
-
-    if (
-      endDate &&
-      Number.isNaN(endDate.getTime())
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Invalid end date.",
-        },
-        { status: 400 },
-      );
-    }
-
-    if (
-      startDate &&
-      endDate &&
-      endDate < startDate
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            "End date cannot be earlier than start date.",
-        },
-        { status: 400 },
       );
     }
 
     await connectDB();
+
+    const body = await request.json();
+
+    const {
+      name,
+      description,
+      location,
+      startDate,
+      endDate,
+      status,
+    } = body;
+
+    if (
+      typeof name !== "string" ||
+      !name.trim()
+    ) {
+      return NextResponse.json(
+        {
+          message: "Event name is required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (
+      startDate &&
+      endDate &&
+      new Date(startDate) >
+        new Date(endDate)
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "End date cannot be before start date.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     let slug = createSlug(name);
 
@@ -174,59 +146,105 @@ export async function POST(request: Request) {
       slug = `event-${Date.now()}`;
     }
 
-    const existingSlug = await Event.findOne({
-      slug,
-    });
+    const existingSlug =
+      await Event.findOne({
+        slug,
+      });
 
     if (existingSlug) {
-      slug = `${slug}-${Date.now()}`;
+      slug = `${slug}-${crypto
+        .randomBytes(3)
+        .toString("hex")}`;
     }
 
     let code = createEventCode(name);
 
-    let existingCode = await Event.findOne({
-      code,
-    });
-
-    while (existingCode) {
-      code = createEventCode(name);
-
-      existingCode = await Event.findOne({
+    while (
+      await Event.exists({
         code,
-      });
+      })
+    ) {
+      code = createEventCode(name);
+    }
+
+    let publicId = createPublicId();
+
+    while (
+      await Event.exists({
+        publicId,
+      })
+    ) {
+      publicId = createPublicId();
     }
 
     const event = await Event.create({
-      name,
+      name: name.trim(),
+
       slug,
+
       code,
-      description,
-      location,
-      startDate,
-      endDate,
-      status,
+
+      publicId,
+
+      description:
+        typeof description === "string"
+          ? description.trim()
+          : "",
+
+      location:
+        typeof location === "string"
+          ? location.trim()
+          : "",
+
+      startDate: startDate
+        ? new Date(startDate)
+        : undefined,
+
+      endDate: endDate
+        ? new Date(endDate)
+        : undefined,
+
+      status:
+        status === "active" ||
+        status === "completed"
+          ? status
+          : "draft",
+
       attendeeCount: 0,
+
       badgeCount: 0,
+
       createdBy: session.user.id,
     });
 
     return NextResponse.json(
       {
         success: true,
-        message: "Event created successfully.",
+
         event,
+
+        publicUrl: `/public/${publicId}`,
+
+        message:
+          "Event created successfully.",
       },
-      { status: 201 },
+      {
+        status: 201,
+      },
     );
   } catch (error) {
-    console.error("POST /api/events failed:", error);
+    console.error(
+      "POST event error:",
+      error,
+    );
 
     return NextResponse.json(
       {
-        success: false,
         message: "Failed to create event.",
       },
-      { status: 500 },
+      {
+        status: 500,
+      },
     );
   }
 }

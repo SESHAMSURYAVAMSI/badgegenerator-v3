@@ -3,20 +3,23 @@ import mongoose, {
   type Model,
 } from "mongoose";
 
-export type AttendeeStatus =
-  | "registered"
-  | "checked-in"
-  | "cancelled";
-
 export interface IAttendee {
   eventId: mongoose.Types.ObjectId;
+
   name: string;
-  email?: string;
-  phone?: string;
+  email: string;
+
   registrationNumber: string;
-  category?: string;
+  category: string;
+
   qrValue: string;
-  status: AttendeeStatus;
+
+  badgeGenerated: boolean;
+  badgeUrl: string;
+
+  badgeGeneratedAt?: Date;
+  badgeGenerationCount: number;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -34,54 +37,53 @@ const AttendeeSchema = new Schema<IAttendee>(
       type: String,
       required: true,
       trim: true,
-      maxlength: 150,
     },
 
     email: {
       type: String,
+      required: true,
       trim: true,
       lowercase: true,
-      default: "",
-      maxlength: 200,
-    },
-
-    phone: {
-      type: String,
-      trim: true,
-      default: "",
-      maxlength: 30,
     },
 
     registrationNumber: {
       type: String,
       required: true,
       trim: true,
-      uppercase: true,
-      maxlength: 100,
     },
 
     category: {
       type: String,
-      trim: true,
       default: "",
-      maxlength: 100,
+      trim: true,
     },
 
     qrValue: {
       type: String,
-      required: true,
+      default: "",
       trim: true,
-      maxlength: 500,
     },
 
-    status: {
+    badgeGenerated: {
+      type: Boolean,
+      default: false,
+    },
+
+    badgeUrl: {
       type: String,
-      enum: [
-        "registered",
-        "checked-in",
-        "cancelled",
-      ],
-      default: "registered",
+      default: "",
+      trim: true,
+    },
+
+    badgeGeneratedAt: {
+      type: Date,
+      default: undefined,
+    },
+
+    badgeGenerationCount: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
   },
   {
@@ -91,22 +93,12 @@ const AttendeeSchema = new Schema<IAttendee>(
 
 AttendeeSchema.index({
   eventId: 1,
-  createdAt: -1,
+  registrationNumber: 1,
 });
-
-AttendeeSchema.index(
-  {
-    eventId: 1,
-    registrationNumber: 1,
-  },
-  {
-    unique: true,
-  },
-);
 
 AttendeeSchema.index({
   eventId: 1,
-  qrValue: 1,
+  createdAt: -1,
 });
 
 const Attendee: Model<IAttendee> =

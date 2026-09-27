@@ -12,14 +12,21 @@ export interface IEvent {
   name: string;
   slug: string;
   code: string;
+
+  publicId?: string;
+
   description?: string;
   startDate?: Date;
   endDate?: Date;
   location?: string;
+
   status: EventStatus;
+
   attendeeCount: number;
   badgeCount: number;
+
   createdBy: mongoose.Types.ObjectId;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -48,6 +55,14 @@ const EventSchema = new Schema<IEvent>(
       trim: true,
     },
 
+    publicId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+      trim: true,
+    },
+
     description: {
       type: String,
       trim: true,
@@ -70,7 +85,11 @@ const EventSchema = new Schema<IEvent>(
 
     status: {
       type: String,
-      enum: ["draft", "active", "completed"],
+      enum: [
+        "draft",
+        "active",
+        "completed",
+      ],
       default: "draft",
     },
 
@@ -102,8 +121,15 @@ EventSchema.index({
   createdAt: -1,
 });
 
+EventSchema.index({
+  publicId: 1,
+});
+
 const Event: Model<IEvent> =
   mongoose.models.Event ||
-  mongoose.model<IEvent>("Event", EventSchema);
+  mongoose.model<IEvent>(
+    "Event",
+    EventSchema,
+  );
 
 export default Event;

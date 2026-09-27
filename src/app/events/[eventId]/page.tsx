@@ -23,6 +23,8 @@ import {
   Users,
 } from "lucide-react";
 
+import PublicBadgePortalCard from "@/components/events/PublicBadgePortalCard";
+
 interface EventData {
   _id: string;
   name: string;
@@ -77,7 +79,9 @@ function formatDateTime(date: string | null) {
   });
 }
 
-function getStatusClasses(status: EventData["status"]) {
+function getStatusClasses(
+  status: EventData["status"],
+) {
   if (status === "active") {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
   }
@@ -89,7 +93,9 @@ function getStatusClasses(status: EventData["status"]) {
   return "border-orange-200 bg-orange-50 text-orange-700";
 }
 
-function getStatusLabel(status: EventData["status"]) {
+function getStatusLabel(
+  status: EventData["status"],
+) {
   if (status === "active") {
     return "Active";
   }
@@ -108,11 +114,14 @@ export default function EventWorkspacePage() {
 
   const eventId = params.eventId;
 
-  const [event, setEvent] = useState<EventData | null>(null);
+  const [event, setEvent] =
+    useState<EventData | null>(null);
 
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] =
+    useState(true);
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
   async function loadEvent() {
     if (!eventId) {
@@ -123,21 +132,28 @@ export default function EventWorkspacePage() {
       setIsLoading(true);
       setError("");
 
-      const response = await fetch(`/api/events/${eventId}`, {
-        cache: "no-store",
-      });
+      const response = await fetch(
+        `/api/events/${eventId}`,
+        {
+          cache: "no-store",
+        },
+      );
 
       const data = await response.json();
 
       if (!response.ok) {
         throw new Error(
-          data.message || "Failed to fetch event.",
+          data.message ||
+            "Failed to fetch event.",
         );
       }
 
       setEvent(data.event);
     } catch (error) {
-      console.error("Failed to load event:", error);
+      console.error(
+        "Failed to load event:",
+        error,
+      );
 
       setError(
         error instanceof Error
@@ -314,7 +330,9 @@ export default function EventWorkspacePage() {
                     <CalendarDays className="h-4 w-4 text-[#EA580C]" />
 
                     <span>
-                      {formatDate(event.startDate)}
+                      {formatDate(
+                        event.startDate,
+                      )}
                     </span>
 
                     {event.endDate && (
@@ -324,7 +342,9 @@ export default function EventWorkspacePage() {
                         </span>
 
                         <span>
-                          {formatDate(event.endDate)}
+                          {formatDate(
+                            event.endDate,
+                          )}
                         </span>
                       </>
                     )}
@@ -467,13 +487,22 @@ export default function EventWorkspacePage() {
             <p className="mt-4 text-2xl font-bold">
               {event.status === "active"
                 ? "Live"
-                : getStatusLabel(event.status)}
+                : getStatusLabel(
+                    event.status,
+                  )}
             </p>
 
             <p className="mt-1 text-xs text-stone-500">
               Event status
             </p>
           </motion.div>
+        </div>
+
+        {/* PUBLIC BADGE PORTAL */}
+        <div className="mt-8">
+          <PublicBadgePortalCard
+            eventId={eventId}
+          />
         </div>
 
         {/* WORKSPACE */}
@@ -567,7 +596,7 @@ export default function EventWorkspacePage() {
               </div>
             </Link>
 
-            {/* BADGE CONFIGURATION - NOW ACTIVE */}
+            {/* BADGE CONFIGURATION */}
             <Link
               href={`/events/${eventId}/badge`}
               className="group rounded-3xl border border-orange-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-orange-300 hover:shadow-xl hover:shadow-orange-900/5"
@@ -840,7 +869,9 @@ export default function EventWorkspacePage() {
                     event.status,
                   )}`}
                 >
-                  {getStatusLabel(event.status)}
+                  {getStatusLabel(
+                    event.status,
+                  )}
                 </span>
               </div>
             </div>
@@ -871,7 +902,9 @@ export default function EventWorkspacePage() {
                 </p>
 
                 <p className="mt-1 text-sm font-semibold">
-                  {formatDateTime(event.createdAt)}
+                  {formatDateTime(
+                    event.createdAt,
+                  )}
                 </p>
               </div>
 
@@ -881,7 +914,9 @@ export default function EventWorkspacePage() {
                 </p>
 
                 <p className="mt-1 text-sm font-semibold">
-                  {formatDateTime(event.updatedAt)}
+                  {formatDateTime(
+                    event.updatedAt,
+                  )}
                 </p>
               </div>
 

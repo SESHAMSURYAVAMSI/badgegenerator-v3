@@ -37,8 +37,13 @@ interface ImportError {
 
 const MAX_ROWS = 5000;
 
-function cleanString(value: unknown): string {
-  if (value === null || value === undefined) {
+function cleanString(
+  value: unknown,
+): string {
+  if (
+    value === null ||
+    value === undefined
+  ) {
     return "";
   }
 
@@ -51,53 +56,15 @@ function normalizeRegistrationNumber(
   return value.trim().toUpperCase();
 }
 
-function createRegistrationNumber(): string {
-  const timestamp = Date.now()
-    .toString()
-    .slice(-7);
-
-  const randomPart = Math.random()
-    .toString(36)
-    .slice(2, 7)
-    .toUpperCase();
-
-  return `REG-${timestamp}-${randomPart}`;
-}
-
-function isValidEmail(email: string): boolean {
+function isValidEmail(
+  email: string,
+): boolean {
   if (!email) {
     return true;
   }
 
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
-
-async function generateUniqueRegistrationNumber(
-  eventId: string,
-  usedNumbers: Set<string>,
-): Promise<string> {
-  for (let attempt = 0; attempt < 20; attempt += 1) {
-    const registrationNumber =
-      createRegistrationNumber();
-
-    if (usedNumbers.has(registrationNumber)) {
-      continue;
-    }
-
-    const existing = await Attendee.exists({
-      eventId,
-      registrationNumber,
-    });
-
-    if (!existing) {
-      usedNumbers.add(registrationNumber);
-
-      return registrationNumber;
-    }
-  }
-
-  throw new Error(
-    "Unable to generate a unique registration number.",
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    email,
   );
 }
 
@@ -120,13 +87,15 @@ export async function POST(
       );
     }
 
-    const { eventId } = await context.params;
+    const { eventId } =
+      await context.params;
 
     if (!eventId) {
       return NextResponse.json(
         {
           success: false,
-          message: "Event ID is required.",
+          message:
+            "Event ID is required.",
         },
         {
           status: 400,
@@ -134,7 +103,8 @@ export async function POST(
       );
     }
 
-    const body = await request.json();
+    const body =
+      await request.json();
 
     if (
       !body ||
@@ -152,7 +122,8 @@ export async function POST(
       );
     }
 
-    const rows = body.rows as ImportRow[];
+    const rows =
+      body.rows as ImportRow[];
 
     if (rows.length === 0) {
       return NextResponse.json(
@@ -181,16 +152,18 @@ export async function POST(
 
     await connectDB();
 
-    const event = await Event.findOne({
-      _id: eventId,
-      createdBy: session.user.id,
-    });
+    const event =
+      await Event.findOne({
+        _id: eventId,
+        createdBy: session.user.id,
+      });
 
     if (!event) {
       return NextResponse.json(
         {
           success: false,
-          message: "Event not found.",
+          message:
+            "Event not found.",
         },
         {
           status: 404,
@@ -199,27 +172,50 @@ export async function POST(
     }
 
     const errors: ImportError[] = [];
-    const cleanRows: CleanRow[] = [];
+
+    const cleanRows: CleanRow[] =
+      [];
 
     const fileRegistrationNumbers =
       new Set<string>();
 
+    /*
+     * Validate every uploaded row.
+     */
     for (
       let index = 0;
       index < rows.length;
       index += 1
     ) {
-      const row = rows[index];
+      const row =
+        rows[index];
 
-      const rowNumber = index + 2;
+      /*
+       * Excel row number.
+       * Row 1 is normally the header,
+       * therefore data starts at row 2.
+       */
+      const rowNumber =
+        index + 2;
 
-      const name = cleanString(row.name);
+      const name =
+        cleanString(row.name);
 
-      const email = cleanString(row.email)
-        .toLowerCase();
+      const email =
+        cleanString(
+          row.email,
+        ).toLowerCase();
 
-      const phone = cleanString(row.phone);
+      const phone =
+        cleanString(row.phone);
 
+      /*
+       * Registration number comes
+       * directly from the uploaded file.
+       *
+       * We normalize it to uppercase,
+       * but we NEVER generate it.
+       */
       const registrationNumber =
         normalizeRegistrationNumber(
           cleanString(
@@ -227,18 +223,21 @@ export async function POST(
           ),
         );
 
-      const category = cleanString(
-        row.category,
-      );
+      const category =
+        cleanString(
+          row.category,
+        );
 
-      const qrValue = cleanString(
-        row.qrValue,
-      );
+      const qrValue =
+        cleanString(
+          row.qrValue,
+        );
 
       if (!name) {
         errors.push({
           rowNumber,
-          message: "Name is required.",
+          message:
+            "Name is required.",
         });
 
         continue;
@@ -257,31 +256,50 @@ export async function POST(
       if (!isValidEmail(email)) {
         errors.push({
           rowNumber,
-          message: `Invalid email address: ${email}`,
+          message:
+            `Invalid email address: ${email}`,
         });
 
         continue;
       }
 
+      /*
+       * Registration number is mandatory.
+       *
+       * IMPORTANT:
+       * No automatic generation.
+       */
+      if (!registrationNumber) {
+        errors.push({
+          rowNumber,
+          message:
+            "Registration number is required.",
+        });
+
+        continue;
+      }
+
+      /*
+       * Prevent duplicate registration
+       * numbers inside the uploaded file.
+       */
       if (
-        registrationNumber &&
         fileRegistrationNumbers.has(
           registrationNumber,
         )
       ) {
         errors.push({
           rowNumber,
-          message: `Duplicate registration number in uploaded file: ${registrationNumber}`,
+          message:
+            `Duplicate registration number in uploaded file: ${registrationNumber}`,
         });
 
         continue;
       }
 
-      if (registrationNumber) {
-        fileRegistrationNumbers.add(
-          registrationNumber,
-        );
-      }
+      fileRegistrationNumbers.add(
+        registrationNumber,
+      );
 
       cleanRows.push({
         name,
@@ -308,37 +326,36 @@ export async function POST(
       );
     }
 
+    /*
+     * Check supplied registration
+     * numbers against MongoDB.
+     */
     const providedRegistrationNumbers =
-      cleanRows
-        .filter(
-          (row) => row.registrationNumber,
-        )
-        .map(
-          (row) => row.registrationNumber,
-        );
+      cleanRows.map(
+        (row) =>
+          row.registrationNumber,
+      );
 
     const existingAttendees =
-      providedRegistrationNumbers.length > 0
-        ? await Attendee.find({
-            eventId: event._id,
-            registrationNumber: {
-              $in: providedRegistrationNumbers,
-            },
-          })
-            .select("registrationNumber")
-            .lean()
-        : [];
+      await Attendee.find({
+        eventId: event._id,
+        registrationNumber: {
+          $in:
+            providedRegistrationNumbers,
+        },
+      })
+        .select(
+          "registrationNumber",
+        )
+        .lean();
 
-    const existingNumbers = new Set(
-      existingAttendees.map(
-        (attendee) =>
-          attendee.registrationNumber,
-      ),
-    );
-
-    const usedNumbers = new Set(
-      providedRegistrationNumbers,
-    );
+    const existingNumbers =
+      new Set(
+        existingAttendees.map(
+          (attendee) =>
+            attendee.registrationNumber,
+        ),
+      );
 
     const attendeesToInsert: Array<{
       eventId: typeof event._id;
@@ -349,40 +366,50 @@ export async function POST(
       category: string;
       qrValue: string;
       status: "registered";
+
+      badgeGenerated: boolean;
+      badgeUrl: string;
+      badgeGenerationCount: number;
     }> = [];
 
+    /*
+     * Prepare attendees for insertion.
+     */
     for (const row of cleanRows) {
-      let registrationNumber =
+      const registrationNumber =
         row.registrationNumber;
 
+      /*
+       * Registration number already
+       * exists in this event.
+       */
       if (
-        registrationNumber &&
         existingNumbers.has(
           registrationNumber,
         )
       ) {
         errors.push({
-          rowNumber: row.rowNumber,
-          message: `Registration number already exists: ${registrationNumber}`,
+          rowNumber:
+            row.rowNumber,
+          message:
+            `Registration number already exists: ${registrationNumber}`,
         });
 
         continue;
       }
 
-      if (!registrationNumber) {
-        registrationNumber =
-          await generateUniqueRegistrationNumber(
-            event._id.toString(),
-            usedNumbers,
-          );
-      } else {
-        usedNumbers.add(
-          registrationNumber,
-        );
-      }
-
+      /*
+       * QR value:
+       *
+       * 1. Use uploaded QR value when
+       *    provided.
+       *
+       * 2. Otherwise use the exact
+       *    supplied registration number.
+       */
       const qrValue =
-        row.qrValue || registrationNumber;
+        row.qrValue ||
+        registrationNumber;
 
       attendeesToInsert.push({
         eventId: event._id,
@@ -393,10 +420,17 @@ export async function POST(
         category: row.category,
         qrValue,
         status: "registered",
+
+        badgeGenerated: false,
+        badgeUrl: "",
+        badgeGenerationCount: 0,
       });
     }
 
-    if (attendeesToInsert.length === 0) {
+    if (
+      attendeesToInsert.length ===
+      0
+    ) {
       return NextResponse.json(
         {
           success: false,
@@ -429,9 +463,15 @@ export async function POST(
         error,
       );
 
+      /*
+       * MongoDB may insert some
+       * documents before encountering
+       * an error when ordered=false.
+       */
       if (
         error &&
-        typeof error === "object" &&
+        typeof error ===
+          "object" &&
         "insertedDocs" in error
       ) {
         const insertedDocs = (
@@ -440,17 +480,27 @@ export async function POST(
           }
         ).insertedDocs;
 
-        if (Array.isArray(insertedDocs)) {
+        if (
+          Array.isArray(
+            insertedDocs,
+          )
+        ) {
           insertedCount =
             insertedDocs.length;
         }
       }
 
-      if (insertedCount === 0) {
+      if (
+        insertedCount === 0
+      ) {
         throw error;
       }
     }
 
+    /*
+     * Recalculate attendee count
+     * from MongoDB.
+     */
     const attendeeCount =
       await Attendee.countDocuments({
         eventId: event._id,
@@ -459,25 +509,49 @@ export async function POST(
         },
       });
 
+    /*
+     * Recalculate generated badge
+     * count as well.
+     */
+    const badgeCount =
+      await Attendee.countDocuments({
+        eventId: event._id,
+        badgeGenerated: true,
+      });
+
     await Event.findByIdAndUpdate(
       event._id,
       {
         attendeeCount,
+        badgeCount,
       },
     );
 
     return NextResponse.json({
       success: true,
-      message: `Successfully imported ${insertedCount.toLocaleString()} attendee${
-        insertedCount === 1
-          ? ""
-          : "s"
-      }.`,
-      importedCount: insertedCount,
+
+      message:
+        `Successfully imported ${insertedCount.toLocaleString()} attendee${
+          insertedCount ===
+          1
+            ? ""
+            : "s"
+        }.`,
+
+      importedCount:
+        insertedCount,
+
       skippedCount:
-        rows.length - insertedCount,
-      errorCount: errors.length,
+        rows.length -
+        insertedCount,
+
+      errorCount:
+        errors.length,
+
       attendeeCount,
+
+      badgeCount,
+
       errors,
     });
   } catch (error) {

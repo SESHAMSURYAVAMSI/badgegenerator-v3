@@ -4,6 +4,7 @@ import Link from "next/link";
 import { FormEvent, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
+import ExportAttendeesButton from "@/components/attendees/ExportAttendeesButton";
 import {
   ArrowLeft,
   BadgeCheck,
@@ -446,6 +447,10 @@ export default function AttendeesPage() {
               <FileSpreadsheet className="h-4 w-4" />
               Import Excel / CSV
             </Link>
+
+            <ExportAttendeesButton
+              eventId={eventId}
+            />
 
             <button
               type="button"
@@ -1064,6 +1069,9 @@ export default function AttendeesPage() {
                     className="mb-2 block text-sm font-semibold"
                   >
                     Registration number
+                    <span className="ml-1 text-[#EA580C]">
+                      *
+                    </span>
                   </label>
 
                   <input
@@ -1078,7 +1086,8 @@ export default function AttendeesPage() {
                         event.target.value,
                       )
                     }
-                    placeholder="Leave blank to auto-generate"
+                    placeholder="e.g. ACVS-001"
+                    required
                     maxLength={100}
                     className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm uppercase outline-none transition placeholder:normal-case placeholder:text-stone-400 focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
                   />

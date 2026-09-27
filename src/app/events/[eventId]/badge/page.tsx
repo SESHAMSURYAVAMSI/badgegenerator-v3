@@ -3,6 +3,7 @@
 import {
   ArrowLeft,
   Check,
+  CircleAlert,
   Loader2,
   Save,
   Sparkles,
@@ -13,6 +14,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 
@@ -20,6 +22,7 @@ import AttendeeSelector, {
   type BadgeAttendee,
 } from "@/components/badge/AttendeeSelector";
 import BadgeFieldSettings from "@/components/badge/BadgeFieldSettings";
+import BadgeGenerator from "@/components/badge/BadgeGenerator";
 import BadgePreview from "@/components/badge/BadgePreview";
 import BadgeTemplateUploader from "@/components/badge/BadgeTemplateUploader";
 
@@ -45,6 +48,10 @@ interface AttendeeApiData {
   registrationNumber?: string;
   category?: string;
   qrValue?: string;
+  badgeGenerated?: boolean;
+  badgeUrl?: string;
+  badgeGeneratedAt?: string;
+  badgeGenerationCount?: number;
 }
 
 function createFieldsForTemplate(
@@ -235,7 +242,23 @@ function normalizeAttendee(
     registrationNumber,
     category,
     qrValue,
+    badgeGenerated:
+      attendee.badgeGenerated,
+    badgeUrl:
+      attendee.badgeUrl,
+    badgeGeneratedAt:
+      attendee.badgeGeneratedAt,
+    badgeGenerationCount:
+      attendee.badgeGenerationCount,
   };
+}
+
+function createConfigSnapshot(
+  config: BadgeConfigData,
+): string {
+  return JSON.stringify(
+    config,
+  );
 }
 
 export default function BadgeDesignerPage() {
@@ -261,10 +284,12 @@ export default function BadgeDesignerPage() {
     setSelectedAttendeeId,
   ] = useState("");
 
-  const [selectedField, setSelectedField] =
-    useState<BadgeFieldType | null>(
-      "name",
-    );
+  const [
+    selectedField,
+    setSelectedField,
+  ] = useState<BadgeFieldType | null>(
+    "name",
+  );
 
   const [loading, setLoading] =
     useState(true);
@@ -277,6 +302,18 @@ export default function BadgeDesignerPage() {
 
   const [success, setSuccess] =
     useState("");
+
+  const [
+    hasUnsavedChanges,
+    setHasUnsavedChanges,
+  ] = useState(false);
+
+  const savedConfigSnapshot =
+    useRef<string>(
+      createConfigSnapshot(
+        DEFAULT_BADGE_CONFIG,
+      ),
+    );
 
   const selectedAttendee =
     useMemo(() => {
@@ -332,26 +369,55 @@ export default function BadgeDesignerPage() {
       selectedField,
     ]);
 
+  const updateUnsavedState =
+    useCallback(
+      (
+        nextConfig: BadgeConfigData,
+      ) => {
+        const nextSnapshot =
+          createConfigSnapshot(
+            nextConfig,
+          );
+
+        setHasUnsavedChanges(
+          nextSnapshot !==
+            savedConfigSnapshot.current,
+        );
+      },
+      [],
+    );
+
   const updateField = useCallback(
     (
       fieldId: BadgeFieldType,
       updates: Partial<BadgeFieldConfig>,
     ) => {
-      setConfig((current) => ({
-        ...current,
-        fields:
-          current.fields.map(
-            (field) =>
-              field.id === fieldId
-                ? {
-                    ...field,
-                    ...updates,
-                  }
-                : field,
-          ),
-      }));
+      setConfig((current) => {
+        const nextConfig: BadgeConfigData =
+          {
+            ...current,
+            fields:
+              current.fields.map(
+                (field) =>
+                  field.id === fieldId
+                    ? {
+                        ...field,
+                        ...updates,
+                      }
+                    : field,
+              ),
+          };
+
+        updateUnsavedState(
+          nextConfig,
+        );
+
+        return nextConfig;
+      });
+
+      setSuccess("");
     },
-    [],
+    [updateUnsavedState],
   );
 
   const loadDesigner =
@@ -360,6 +426,7 @@ export default function BadgeDesignerPage() {
         setError(
           "Event ID is missing.",
         );
+
         setLoading(false);
         return;
       }
@@ -432,20 +499,28 @@ export default function BadgeDesignerPage() {
             normalizeAttendee,
           );
 
+        const loadedConfig =
+          badgeData.config ??
+          DEFAULT_BADGE_CONFIG;
+
         setEvent(eventData);
+
         setAttendees(
           normalizedAttendees,
         );
 
-        if (badgeData.config) {
-          setConfig(
-            badgeData.config,
+        setConfig(
+          loadedConfig,
+        );
+
+        savedConfigSnapshot.current =
+          createConfigSnapshot(
+            loadedConfig,
           );
-        } else {
-          setConfig(
-            DEFAULT_BADGE_CONFIG,
-          );
-        }
+
+        setHasUnsavedChanges(
+          false,
+        );
 
         if (
           normalizedAttendees.length >
@@ -476,11 +551,39 @@ export default function BadgeDesignerPage() {
     void loadDesigner();
   }, [loadDesigner]);
 
+  useEffect(() => {
+    function handleBeforeUnload(
+      browserEvent: BeforeUnloadEvent,
+    ) {
+      if (!hasUnsavedChanges) {
+        return;
+      }
+
+      browserEvent.preventDefault();
+
+      browserEvent.returnValue =
+        "";
+    }
+
+    window.addEventListener(
+      "beforeunload",
+      handleBeforeUnload,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "beforeunload",
+        handleBeforeUnload,
+      );
+    };
+  }, [hasUnsavedChanges]);
+
   async function saveBadge() {
     if (!eventId) {
       setError(
         "Event ID is missing.",
       );
+
       return;
     }
 
@@ -517,9 +620,21 @@ export default function BadgeDesignerPage() {
         );
       }
 
-      if (data.config) {
-        setConfig(data.config);
-      }
+      const savedConfig =
+        data.config ?? config;
+
+      setConfig(
+        savedConfig,
+      );
+
+      savedConfigSnapshot.current =
+        createConfigSnapshot(
+          savedConfig,
+        );
+
+      setHasUnsavedChanges(
+        false,
+      );
 
       setSuccess(
         "Badge configuration saved successfully.",
@@ -550,50 +665,64 @@ export default function BadgeDesignerPage() {
     width: number,
     height: number,
   ) {
-    setConfig((current) => ({
-      ...current,
-      width,
-      height,
-      backgroundImage: image,
-      backgroundImageName:
-        imageName,
-      fields:
-        createFieldsForTemplate(
-          width,
-          height,
-        ),
-    }));
+    const nextConfig: BadgeConfigData =
+      {
+        ...config,
+        width,
+        height,
+        backgroundImage: image,
+        backgroundImageName:
+          imageName,
+        fields:
+          createFieldsForTemplate(
+            width,
+            height,
+          ),
+      };
 
-    setSelectedField("name");
-
-    setSuccess(
-      "Badge template loaded. Position the fields on your badge.",
+    setConfig(
+      nextConfig,
     );
 
-    window.setTimeout(() => {
-      setSuccess("");
-    }, 3500);
+    updateUnsavedState(
+      nextConfig,
+    );
+
+    setSelectedField(
+      "name",
+    );
+
+    setSuccess(
+      "Badge template loaded. Position the fields and save your badge.",
+    );
   }
 
   function handleTemplateRemove() {
-    setConfig({
-      ...DEFAULT_BADGE_CONFIG,
-      fields:
-        createFieldsForTemplate(
-          DEFAULT_BADGE_CONFIG.width,
-          DEFAULT_BADGE_CONFIG.height,
-        ),
-    });
+    const nextConfig: BadgeConfigData =
+      {
+        ...DEFAULT_BADGE_CONFIG,
+        fields:
+          createFieldsForTemplate(
+            DEFAULT_BADGE_CONFIG.width,
+            DEFAULT_BADGE_CONFIG.height,
+          ),
+      };
 
-    setSelectedField("name");
-
-    setSuccess(
-      "Badge template removed.",
+    setConfig(
+      nextConfig,
     );
 
-    window.setTimeout(() => {
-      setSuccess("");
-    }, 2500);
+    updateUnsavedState(
+      nextConfig,
+    );
+
+    setSelectedField(
+      "name",
+    );
+
+    setSuccess(
+      "Badge template removed. Save the badge to apply this change.",
+    );
   }
 
   function handleAttendeeSelect(
@@ -658,29 +787,54 @@ export default function BadgeDesignerPage() {
                 </h1>
               </div>
 
-              <p className="truncate text-xs text-stone-500">
-                {event?.name ||
-                  "Event badge template"}
-              </p>
+              <div className="flex min-w-0 items-center gap-2">
+                <p className="truncate text-xs text-stone-500">
+                  {event?.name ||
+                    "Event badge template"}
+                </p>
+
+                {hasUnsavedChanges ? (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-black text-orange-700">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[#EA580C]" />
+                    Unsaved
+                  </span>
+                ) : (
+                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black text-emerald-700">
+                    <Check className="h-3 w-3" />
+                    Saved
+                  </span>
+                )}
+              </div>
             </div>
           </div>
 
           <button
             type="button"
             onClick={saveBadge}
-            disabled={saving}
-            className="inline-flex shrink-0 items-center gap-2 rounded-xl bg-[#EA580C] px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-orange-200 transition hover:bg-[#c2410c] disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={
+              saving ||
+              !hasUnsavedChanges
+            }
+            className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white shadow-lg transition ${
+              hasUnsavedChanges
+                ? "bg-[#EA580C] shadow-orange-200 hover:bg-[#c2410c]"
+                : "bg-stone-300 shadow-none"
+            } disabled:cursor-not-allowed disabled:opacity-70`}
           >
             {saving ? (
               <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
+            ) : hasUnsavedChanges ? (
               <Save className="h-4 w-4" />
+            ) : (
+              <Check className="h-4 w-4" />
             )}
 
             <span className="hidden sm:inline">
               {saving
                 ? "Saving..."
-                : "Save Badge"}
+                : hasUnsavedChanges
+                  ? "Save Badge"
+                  : "Saved"}
             </span>
           </button>
         </div>
@@ -688,15 +842,36 @@ export default function BadgeDesignerPage() {
 
       <div className="mx-auto max-w-[1800px] px-4 py-5 sm:px-6 lg:px-8">
         {error && (
-          <div className="mb-4 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
-            {error}
+          <div className="mb-4 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+            <CircleAlert className="mt-0.5 h-4 w-4 shrink-0" />
+
+            <span>{error}</span>
           </div>
         )}
 
         {success && (
           <div className="mb-4 flex items-center gap-2 rounded-2xl border border-green-200 bg-green-50 px-4 py-3 text-sm font-semibold text-green-700">
             <Check className="h-4 w-4" />
+
             {success}
+          </div>
+        )}
+
+        {hasUnsavedChanges && (
+          <div className="mb-4 flex items-center gap-3 rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-orange-100 text-[#EA580C]">
+              <CircleAlert className="h-4 w-4" />
+            </div>
+
+            <div>
+              <p className="text-sm font-bold text-orange-900">
+                You have unsaved badge changes
+              </p>
+
+              <p className="mt-0.5 text-xs text-orange-700">
+                Save your badge before leaving this page.
+              </p>
+            </div>
           </div>
         )}
 
@@ -782,23 +957,27 @@ export default function BadgeDesignerPage() {
                       <span
                         role="button"
                         tabIndex={0}
-                        onClick={(event) => {
-                          event.stopPropagation();
+                        onClick={(
+                          clickEvent,
+                        ) => {
+                          clickEvent.stopPropagation();
+
                           toggleField(
                             field.id,
                           );
                         }}
                         onKeyDown={(
-                          event,
+                          keyEvent,
                         ) => {
                           if (
-                            event.key ===
+                            keyEvent.key ===
                               "Enter" ||
-                            event.key ===
+                            keyEvent.key ===
                               " "
                           ) {
-                            event.preventDefault();
-                            event.stopPropagation();
+                            keyEvent.preventDefault();
+                            keyEvent.stopPropagation();
+
                             toggleField(
                               field.id,
                             );
@@ -821,7 +1000,9 @@ export default function BadgeDesignerPage() {
             </div>
 
             <AttendeeSelector
-              attendees={attendees}
+              attendees={
+                attendees
+              }
               selectedId={
                 selectedAttendeeId
               }
@@ -879,17 +1060,41 @@ export default function BadgeDesignerPage() {
                 qrSource,
               ) => {
                 setConfig(
-                  (current) => ({
-                    ...current,
-                    qrSource,
-                  }),
+                  (current) => {
+                    const nextConfig: BadgeConfigData =
+                      {
+                        ...current,
+                        qrSource,
+                      };
+
+                    updateUnsavedState(
+                      nextConfig,
+                    );
+
+                    return nextConfig;
+                  },
                 );
+
+                setSuccess("");
               }}
               onUpdateField={
                 updateField
               }
             />
           </section>
+        </div>
+
+        <div className="mt-5">
+          <BadgeGenerator
+            eventId={eventId}
+            config={config}
+            attendees={
+              attendees
+            }
+            selectedAttendeeId={
+              selectedAttendeeId
+            }
+          />
         </div>
       </div>
     </main>

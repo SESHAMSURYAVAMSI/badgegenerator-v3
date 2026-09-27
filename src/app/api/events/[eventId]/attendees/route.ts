@@ -11,27 +11,6 @@ interface RouteContext {
   }>;
 }
 
-function createRegistrationNumber(): string {
-  const randomPart = Math.random()
-    .toString(36)
-    .slice(2, 8)
-    .toUpperCase();
-
-  return `REG-${Date.now()
-    .toString()
-    .slice(-6)}-${randomPart}`;
-}
-
-async function getOwnedEvent(
-  eventId: string,
-  userId: string,
-) {
-  return Event.findOne({
-    _id: eventId,
-    createdBy: userId,
-  });
-}
-
 export async function GET(
   request: Request,
   context: RouteContext,
@@ -42,8 +21,7 @@ export async function GET(
     if (!session?.user?.id) {
       return NextResponse.json(
         {
-          success: false,
-          message: "Unauthorized.",
+          message: "Unauthorized",
         },
         {
           status: 401,
@@ -53,55 +31,17 @@ export async function GET(
 
     const { eventId } = await context.params;
 
-    if (!eventId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Event ID is required.",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
-
-    const { searchParams } = new URL(request.url);
-
-    const search =
-      searchParams.get("search")?.trim() || "";
-
-    const requestedPage = Number(
-      searchParams.get("page") || "1",
-    );
-
-    const requestedLimit = Number(
-      searchParams.get("limit") || "10",
-    );
-
-    const page =
-      Number.isFinite(requestedPage) &&
-      requestedPage > 0
-        ? Math.floor(requestedPage)
-        : 1;
-
-    const limit =
-      Number.isFinite(requestedLimit) &&
-      requestedLimit > 0
-        ? Math.min(Math.floor(requestedLimit), 100)
-        : 10;
-
     await connectDB();
 
-    const event = await getOwnedEvent(
-      eventId,
-      session.user.id,
-    );
+    const event = await Event.findOne({
+      _id: eventId,
+      createdBy: session.user.id,
+    });
 
     if (!event) {
       return NextResponse.json(
         {
-          success: false,
-          message: "Event not found.",
+          message: "Event not found",
         },
         {
           status: 404,
@@ -109,102 +49,27 @@ export async function GET(
       );
     }
 
-    const filter: Record<string, unknown> = {
+    const attendees = await Attendee.find({
       eventId: event._id,
-    };
-
-    if (search) {
-      const escapedSearch = search.replace(
-        /[.*+?^${}()|[\]\\]/g,
-        "\\$&",
-      );
-
-      const searchRegex = new RegExp(
-        escapedSearch,
-        "i",
-      );
-
-      filter.$or = [
-        {
-          name: searchRegex,
-        },
-        {
-          email: searchRegex,
-        },
-        {
-          phone: searchRegex,
-        },
-        {
-          registrationNumber: searchRegex,
-        },
-        {
-          category: searchRegex,
-        },
-        {
-          qrValue: searchRegex,
-        },
-      ];
-    }
-
-    const total = await Attendee.countDocuments(
-      filter,
-    );
-
-    const totalPages = Math.max(
-      Math.ceil(total / limit),
-      1,
-    );
-
-    const safePage = Math.min(
-      page,
-      totalPages,
-    );
-
-    const skip = (safePage - 1) * limit;
-
-    const attendees = await Attendee.find(filter)
+    })
       .sort({
         createdAt: -1,
       })
-      .skip(skip)
-      .limit(limit)
       .lean();
 
     return NextResponse.json({
       success: true,
-      attendees: attendees.map((attendee) => ({
-        _id: attendee._id.toString(),
-        eventId: attendee.eventId.toString(),
-        name: attendee.name,
-        email: attendee.email ?? "",
-        phone: attendee.phone ?? "",
-        registrationNumber:
-          attendee.registrationNumber,
-        category: attendee.category ?? "",
-        qrValue: attendee.qrValue,
-        status: attendee.status,
-        createdAt: attendee.createdAt,
-        updatedAt: attendee.updatedAt,
-      })),
-      pagination: {
-        page: safePage,
-        limit,
-        total,
-        totalPages,
-        hasNextPage: safePage < totalPages,
-        hasPreviousPage: safePage > 1,
-      },
+      attendees,
     });
   } catch (error) {
     console.error(
-      "GET /api/events/[eventId]/attendees failed:",
+      "GET attendees error:",
       error,
     );
 
     return NextResponse.json(
       {
-        success: false,
-        message: "Failed to fetch attendees.",
+        message: "Failed to fetch attendees",
       },
       {
         status: 500,
@@ -223,8 +88,7 @@ export async function POST(
     if (!session?.user?.id) {
       return NextResponse.json(
         {
-          success: false,
-          message: "Unauthorized.",
+          message: "Unauthorized",
         },
         {
           status: 401,
@@ -234,62 +98,48 @@ export async function POST(
 
     const { eventId } = await context.params;
 
-    if (!eventId) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Event ID is required.",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
-
     const body = await request.json();
 
-    const name =
-      typeof body.name === "string"
-        ? body.name.trim()
-        : "";
+    const name = String(
+      body.name ?? "",
+    ).trim();
 
-    const email =
-      typeof body.email === "string"
-        ? body.email.trim().toLowerCase()
-        : "";
+    const email = String(
+      body.email ?? "",
+    )
+      .trim()
+      .toLowerCase();
 
-    const phone =
-      typeof body.phone === "string"
-        ? body.phone.trim()
-        : "";
+    const category = String(
+      body.category ?? "",
+    ).trim();
 
-    const providedRegistrationNumber =
-      typeof body.registrationNumber === "string"
-        ? body.registrationNumber.trim().toUpperCase()
-        : "";
+    /*
+     * Registration number is now completely
+     * controlled by the user.
+     *
+     * BadgeFlow will NOT generate one.
+     */
+    const registrationNumber = String(
+      body.registrationNumber ?? "",
+    ).trim();
 
-    const category =
-      typeof body.category === "string"
-        ? body.category.trim()
-        : "";
-
-    const providedQrValue =
-      typeof body.qrValue === "string"
-        ? body.qrValue.trim()
-        : "";
-
-    const status =
-      body.status === "checked-in"
-        ? "checked-in"
-        : body.status === "cancelled"
-          ? "cancelled"
-          : "registered";
+    /*
+     * QR value can be supplied separately.
+     *
+     * If no QR value is supplied,
+     * the provided registration number
+     * will be used.
+     */
+    const qrValue = String(
+      body.qrValue ??
+        registrationNumber,
+    ).trim();
 
     if (!name) {
       return NextResponse.json(
         {
-          success: false,
-          message: "Attendee name is required.",
+          message: "Name is required",
         },
         {
           status: 400,
@@ -297,27 +147,28 @@ export async function POST(
       );
     }
 
-    if (name.length > 150) {
+    if (!email) {
       return NextResponse.json(
         {
-          success: false,
+          message: "Email is required",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /*
+     * Registration number is mandatory.
+     *
+     * IMPORTANT:
+     * There is NO automatic fallback here.
+     */
+    if (!registrationNumber) {
+      return NextResponse.json(
+        {
           message:
-            "Attendee name cannot exceed 150 characters.",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
-
-    if (
-      email &&
-      !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-    ) {
-      return NextResponse.json(
-        {
-          success: false,
-          message: "Please enter a valid email address.",
+            "Registration number is required",
         },
         {
           status: 400,
@@ -327,16 +178,15 @@ export async function POST(
 
     await connectDB();
 
-    const event = await getOwnedEvent(
-      eventId,
-      session.user.id,
-    );
+    const event = await Event.findOne({
+      _id: eventId,
+      createdBy: session.user.id,
+    });
 
     if (!event) {
       return NextResponse.json(
         {
-          success: false,
-          message: "Event not found.",
+          message: "Event not found",
         },
         {
           status: 404,
@@ -344,107 +194,70 @@ export async function POST(
       );
     }
 
-    let registrationNumber =
-      providedRegistrationNumber;
-
-    if (!registrationNumber) {
-      let attempts = 0;
-
-      while (attempts < 10) {
-        const generated =
-          createRegistrationNumber();
-
-        const existing =
-          await Attendee.exists({
-            eventId: event._id,
-            registrationNumber: generated,
-          });
-
-        if (!existing) {
-          registrationNumber = generated;
-          break;
-        }
-
-        attempts += 1;
-      }
-
-      if (!registrationNumber) {
-        return NextResponse.json(
-          {
-            success: false,
-            message:
-              "Unable to generate registration number. Please try again.",
-          },
-          {
-            status: 500,
-          },
-        );
-      }
-    } else {
-      const existing =
-        await Attendee.findOne({
-          eventId: event._id,
-          registrationNumber,
-        });
-
-      if (existing) {
-        return NextResponse.json(
-          {
-            success: false,
-            message:
-              "Registration number already exists for this event.",
-          },
-          {
-            status: 409,
-          },
-        );
-      }
-    }
-
-    const qrValue =
-      providedQrValue || registrationNumber;
-
-    const attendee = await Attendee.create({
-      eventId: event._id,
-      name,
-      email,
-      phone,
-      registrationNumber,
-      category,
-      qrValue,
-      status,
-    });
-
-    const attendeeCount =
-      await Attendee.countDocuments({
+    /*
+     * Check whether the supplied
+     * registration number already exists
+     * for this event.
+     */
+    const existing =
+      await Attendee.findOne({
         eventId: event._id,
-        status: {
-          $ne: "cancelled",
-        },
+        registrationNumber,
       });
 
-    await Event.findByIdAndUpdate(event._id, {
-      attendeeCount,
-    });
+    if (existing) {
+      return NextResponse.json(
+        {
+          message:
+            "Registration number already exists for this event.",
+        },
+        {
+          status: 409,
+        },
+      );
+    }
+
+    /*
+     * Create attendee using the EXACT
+     * registration number supplied by
+     * the user.
+     */
+    const attendee =
+      await Attendee.create({
+        eventId: event._id,
+        name,
+        email,
+        category,
+
+        registrationNumber,
+
+        qrValue:
+          qrValue ||
+          registrationNumber,
+
+        badgeGenerated: false,
+        badgeUrl: "",
+        badgeGenerationCount: 0,
+      });
+
+    /*
+     * Update total attendee count.
+     */
+    await Event.updateOne(
+      {
+        _id: event._id,
+      },
+      {
+        $inc: {
+          attendeeCount: 1,
+        },
+      },
+    );
 
     return NextResponse.json(
       {
         success: true,
-        message: "Attendee added successfully.",
-        attendee: {
-          _id: attendee._id.toString(),
-          eventId: attendee.eventId.toString(),
-          name: attendee.name,
-          email: attendee.email ?? "",
-          phone: attendee.phone ?? "",
-          registrationNumber:
-            attendee.registrationNumber,
-          category: attendee.category ?? "",
-          qrValue: attendee.qrValue,
-          status: attendee.status,
-          createdAt: attendee.createdAt,
-          updatedAt: attendee.updatedAt,
-        },
+        attendee,
       },
       {
         status: 201,
@@ -452,14 +265,189 @@ export async function POST(
     );
   } catch (error) {
     console.error(
-      "POST /api/events/[eventId]/attendees failed:",
+      "POST attendee error:",
       error,
     );
 
     return NextResponse.json(
       {
-        success: false,
-        message: "Failed to create attendee.",
+        message: "Failed to create attendee",
+      },
+      {
+        status: 500,
+      },
+    );
+  }
+}
+
+export async function PATCH(
+  request: Request,
+  context: RouteContext,
+) {
+  try {
+    const session = await auth();
+
+    if (!session?.user?.id) {
+      return NextResponse.json(
+        {
+          message: "Unauthorized",
+        },
+        {
+          status: 401,
+        },
+      );
+    }
+
+    const { eventId } = await context.params;
+
+    const body = await request.json();
+
+    const attendeeId = String(
+      body.attendeeId ?? "",
+    ).trim();
+
+    if (!attendeeId) {
+      return NextResponse.json(
+        {
+          message:
+            "attendeeId is required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    await connectDB();
+
+    const event = await Event.findOne({
+      _id: eventId,
+      createdBy: session.user.id,
+    });
+
+    if (!event) {
+      return NextResponse.json(
+        {
+          message: "Event not found",
+        },
+        {
+          status: 404,
+        },
+      );
+    }
+
+    const attendee =
+      await Attendee.findOne({
+        _id: attendeeId,
+        eventId: event._id,
+      });
+
+    if (!attendee) {
+      return NextResponse.json(
+        {
+          message:
+            "Attendee not found",
+        },
+        {
+          status: 404,
+        },
+      );
+    }
+
+    const badgeGenerated =
+      body.badgeGenerated;
+
+    const badgeUrl =
+      body.badgeUrl !== undefined
+        ? String(body.badgeUrl)
+        : attendee.badgeUrl;
+
+    /*
+     * Badge has been generated.
+     */
+    if (
+      badgeGenerated === true
+    ) {
+      attendee.badgeGenerated =
+        true;
+
+      attendee.badgeUrl =
+        badgeUrl;
+
+      attendee.badgeGeneratedAt =
+        new Date();
+
+      attendee.badgeGenerationCount =
+        (attendee.badgeGenerationCount ??
+          0) + 1;
+    }
+
+    /*
+     * Badge generation has been reset.
+     */
+    else if (
+      badgeGenerated === false
+    ) {
+      attendee.badgeGenerated =
+        false;
+
+      attendee.badgeUrl =
+        badgeUrl;
+
+      attendee.badgeGeneratedAt =
+        undefined;
+    }
+
+    /*
+     * Only update badge URL if it was
+     * explicitly provided.
+     */
+    else if (
+      body.badgeUrl !== undefined
+    ) {
+      attendee.badgeUrl =
+        badgeUrl;
+    }
+
+    await attendee.save();
+
+    /*
+     * Recalculate generated badge count
+     * from the actual attendees.
+     */
+    const generatedBadges =
+      await Attendee.countDocuments({
+        eventId: event._id,
+        badgeGenerated: true,
+      });
+
+    await Event.updateOne(
+      {
+        _id: event._id,
+      },
+      {
+        $set: {
+          badgeCount:
+            generatedBadges,
+        },
+      },
+    );
+
+    return NextResponse.json({
+      success: true,
+      attendee,
+      generatedBadges,
+    });
+  } catch (error) {
+    console.error(
+      "PATCH attendee badge error:",
+      error,
+    );
+
+    return NextResponse.json(
+      {
+        message:
+          "Failed to update badge generation status",
       },
       {
         status: 500,
