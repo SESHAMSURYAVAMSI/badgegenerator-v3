@@ -56,6 +56,7 @@ export async function GET(
     if (!session?.user?.id) {
       return createResponse(
         {
+          success: false,
           message: "Unauthorized.",
         },
         401,
@@ -67,6 +68,7 @@ export async function GET(
     if (!eventId) {
       return createResponse(
         {
+          success: false,
           message: "Event ID is required.",
         },
         400,
@@ -75,6 +77,10 @@ export async function GET(
 
     await connectDB();
 
+    /*
+     * First verify that this event belongs to
+     * the currently authenticated admin.
+     */
     const event = await Event.findOne({
       _id: eventId,
       createdBy: session.user.id,
@@ -83,6 +89,7 @@ export async function GET(
     if (!event) {
       return createResponse(
         {
+          success: false,
           message:
             "Event not found or access denied.",
         },
@@ -91,12 +98,11 @@ export async function GET(
     }
 
     /*
-     * Read publicId directly from MongoDB.
+     * Read the publicId directly from MongoDB.
      *
-     * Using the native collection here makes this
-     * endpoint safe even if an older Event document
-     * was created before publicId was added to the
-     * Mongoose schema.
+     * This also supports older Event documents
+     * that may have been created before publicId
+     * was added to the schema.
      */
     const rawEvent =
       await Event.collection.findOne(
@@ -112,29 +118,80 @@ export async function GET(
 
     let publicId =
       typeof rawEvent?.publicId === "string"
-        ? rawEvent.publicId
+        ? rawEvent.publicId.trim()
         : "";
 
     /*
-     * Older events may not have a publicId.
+     * IMPORTANT:
      *
-     * Generate one automatically and persist it
-     * directly into MongoDB.
+     * If the event already has a publicId,
+     * NEVER generate another one.
+     *
+     * This makes the public URL permanent.
      */
     if (!publicId) {
       publicId =
         await generateUniquePublicId();
 
-      await Event.collection.updateOne(
-        {
-          _id: event._id,
-        },
-        {
-          $set: {
-            publicId,
+      /*
+       * Only set publicId when the event does
+       * not already have one.
+       *
+       * The $exists / $ne protection prevents
+       * an existing publicId from accidentally
+       * being replaced.
+       */
+      const updateResult =
+        await Event.collection.updateOne(
+          {
+            _id: event._id,
+            $or: [
+              {
+                publicId: {
+                  $exists: false,
+                },
+              },
+              {
+                publicId: "",
+              },
+              {
+                publicId: null,
+              },
+            ],
           },
-        },
-      );
+          {
+            $set: {
+              publicId,
+            },
+          },
+        );
+
+      /*
+       * If another request created the publicId
+       * at the same time, read the already-existing
+       * value instead of replacing it.
+       */
+      if (updateResult.modifiedCount === 0) {
+        const existingEvent =
+          await Event.collection.findOne(
+            {
+              _id: event._id,
+            },
+            {
+              projection: {
+                publicId: 1,
+              },
+            },
+          );
+
+        if (
+          typeof existingEvent?.publicId ===
+          "string"
+        ) {
+          publicId =
+            existingEvent.publicId;
+        }
+      }
     }
 
     const origin =
@@ -147,6 +204,7 @@ export async function GET(
       success: true,
       publicId,
       publicUrl,
+      permanent: true,
       event: {
         name: event.name,
         status: event.status,
@@ -160,100 +218,9 @@ export async function GET(
 
     return createResponse(
       {
+        success: false,
         message:
           "Failed to load public portal.",
-      },
-      500,
-    );
-  }
-}
-
-export async function POST(
-  request: Request,
-  context: RouteContext,
-) {
-  try {
-    const session = await auth();
-
-    if (!session?.user?.id) {
-      return createResponse(
-        {
-          message: "Unauthorized.",
-        },
-        401,
-      );
-    }
-
-    const { eventId } = await context.params;
-
-    if (!eventId) {
-      return createResponse(
-        {
-          message: "Event ID is required.",
-        },
-        400,
-      );
-    }
-
-    await connectDB();
-
-    const event = await Event.findOne({
-      _id: eventId,
-      createdBy: session.user.id,
-    }).lean();
-
-    if (!event) {
-      return createResponse(
-        {
-          message:
-            "Event not found or access denied.",
-        },
-        404,
-      );
-    }
-
-    /*
-     * Generate a completely new public URL.
-     *
-     * The previous URL becomes invalid.
-     */
-    const publicId =
-      await generateUniquePublicId();
-
-    await Event.collection.updateOne(
-      {
-        _id: event._id,
-      },
-      {
-        $set: {
-          publicId,
-        },
-      },
-    );
-
-    const origin =
-      new URL(request.url).origin;
-
-    const publicUrl =
-      `${origin}/public/${publicId}`;
-
-    return createResponse({
-      success: true,
-      publicId,
-      publicUrl,
-      message:
-        "Public portal URL regenerated successfully.",
-    });
-  } catch (error) {
-    console.error(
-      "Regenerate public portal error:",
-      error,
-    );
-
-    return createResponse(
-      {
-        message:
-          "Failed to regenerate public portal URL.",
       },
       500,
     );

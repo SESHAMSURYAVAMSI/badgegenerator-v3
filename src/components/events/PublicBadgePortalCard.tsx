@@ -7,11 +7,14 @@ import {
   Link2,
   Loader2,
   QrCode,
-  RefreshCw,
   ShieldCheck,
 } from "lucide-react";
 
-import { useEffect, useState } from "react";
+import QRCode from "qrcode";
+import {
+  useEffect,
+  useState,
+} from "react";
 
 interface PublicBadgePortalCardProps {
   eventId: string;
@@ -23,11 +26,11 @@ export default function PublicBadgePortalCard({
   const [publicUrl, setPublicUrl] =
     useState("");
 
+  const [qrCode, setQrCode] =
+    useState("");
+
   const [loading, setLoading] =
     useState(true);
-
-  const [regenerating, setRegenerating] =
-    useState(false);
 
   const [copied, setCopied] =
     useState(false);
@@ -56,15 +59,52 @@ export default function PublicBadgePortalCard({
         );
       }
 
-      setPublicUrl(data.publicUrl);
+      const url =
+        typeof data.publicUrl === "string"
+          ? data.publicUrl
+          : "";
+
+      setPublicUrl(url);
+
+      if (url) {
+        try {
+          const generatedQr =
+            await QRCode.toDataURL(url, {
+              width: 320,
+              margin: 2,
+              errorCorrectionLevel: "H",
+              color: {
+                dark: "#241000",
+                light: "#ffffff",
+              },
+            });
+
+          setQrCode(generatedQr);
+        } catch (qrError) {
+          console.error(
+            "QR generation failed:",
+            qrError,
+          );
+
+          setQrCode("");
+        }
+      } else {
+        setQrCode("");
+      }
     } catch (err) {
-      console.error(err);
+      console.error(
+        "Load public portal failed:",
+        err,
+      );
 
       setError(
         err instanceof Error
           ? err.message
           : "Failed to load public portal.",
       );
+
+      setPublicUrl("");
+      setQrCode("");
     } finally {
       setLoading(false);
     }
@@ -97,51 +137,6 @@ export default function PublicBadgePortalCard({
     }
   };
 
-  const regenerateUrl = async () => {
-    const confirmed =
-      window.confirm(
-        "Regenerating this URL will invalidate the current public link. Continue?",
-      );
-
-    if (!confirmed) {
-      return;
-    }
-
-    try {
-      setRegenerating(true);
-      setError("");
-
-      const response = await fetch(
-        `/api/events/${eventId}/public-portal`,
-        {
-          method: "POST",
-        },
-      );
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data.message ||
-            "Failed to regenerate URL.",
-        );
-      }
-
-      setPublicUrl(data.publicUrl);
-      setCopied(false);
-    } catch (err) {
-      console.error(err);
-
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to regenerate URL.",
-      );
-    } finally {
-      setRegenerating(false);
-    }
-  };
-
   const openPortal = () => {
     if (!publicUrl) {
       return;
@@ -169,14 +164,14 @@ export default function PublicBadgePortalCard({
               </h2>
 
               <p className="mt-1 text-sm leading-5 text-[#8b6f5c]">
-                Share this link with attendees so
-                they can find and download their
-                generated badges.
+                Share this permanent link with
+                attendees so they can find and
+                download their generated badges.
               </p>
             </div>
           </div>
 
-          <div className="inline-flex items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
+          <div className="inline-flex w-fit items-center gap-2 rounded-full bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700">
             <ShieldCheck className="h-3.5 w-3.5" />
             Public Access
           </div>
@@ -200,21 +195,30 @@ export default function PublicBadgePortalCard({
         ) : (
           <div className="grid gap-6 lg:grid-cols-[1fr_auto]">
             <div className="min-w-0">
-              <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[#a58a78]">
-                Shareable URL
-              </p>
+              <div className="mb-2 flex flex-wrap items-center gap-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-[#a58a78]">
+                  Permanent Shareable URL
+                </p>
+
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-green-700">
+                  <ShieldCheck className="h-3 w-3" />
+                  Fixed Link
+                </span>
+              </div>
 
               <div className="flex flex-col gap-2 sm:flex-row">
                 <div className="min-w-0 flex-1 rounded-xl border border-[#ead8cb] bg-[#fffaf5] px-4 py-3">
                   <p className="truncate text-sm font-medium text-[#5c4030]">
-                    {publicUrl}
+                    {publicUrl ||
+                      "Public URL unavailable"}
                   </p>
                 </div>
 
                 <button
                   type="button"
                   onClick={copyUrl}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-3 text-sm font-semibold text-white shadow-md shadow-orange-100 transition hover:bg-[#c2410c]"
+                  disabled={!publicUrl}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-3 text-sm font-semibold text-white shadow-md shadow-orange-100 transition hover:bg-[#c2410c] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {copied ? (
                     <>
@@ -234,39 +238,58 @@ export default function PublicBadgePortalCard({
                 <button
                   type="button"
                   onClick={openPortal}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[#ead8cb] bg-white px-4 py-2.5 text-xs font-semibold text-[#6b4a38] transition hover:border-[#EA580C] hover:text-[#EA580C]"
+                  disabled={!publicUrl}
+                  className="inline-flex items-center gap-2 rounded-xl border border-[#ead8cb] bg-white px-4 py-2.5 text-xs font-semibold text-[#6b4a38] transition hover:border-[#EA580C] hover:text-[#EA580C] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   <ExternalLink className="h-4 w-4" />
                   Open Public Portal
                 </button>
+              </div>
 
-                <button
-                  type="button"
-                  onClick={regenerateUrl}
-                  disabled={regenerating}
-                  className="inline-flex items-center gap-2 rounded-xl border border-[#ead8cb] bg-white px-4 py-2.5 text-xs font-semibold text-[#6b4a38] transition hover:border-red-300 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-                >
-                  {regenerating ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <RefreshCw className="h-4 w-4" />
-                  )}
+              <div className="mt-4 rounded-2xl border border-orange-100 bg-orange-50/70 px-4 py-3">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#EA580C]" />
 
-                  Regenerate URL
-                </button>
+                  <div>
+                    <p className="text-xs font-bold text-[#7c2d12]">
+                      Permanent public link
+                    </p>
+
+                    <p className="mt-1 text-xs leading-5 text-[#9a6b52]">
+                      This URL is permanently linked
+                      to this event and cannot be
+                      regenerated or replaced.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <p className="mt-4 text-xs leading-5 text-[#a58a78]">
-                Only attendees whose badges have been
-                generated from the admin panel will be
-                able to download a badge.
+                Only attendees whose badges have
+                been generated from the admin panel
+                will be able to find and download a
+                badge through this portal.
               </p>
             </div>
 
             <div className="flex justify-center lg:justify-end">
               <div className="rounded-3xl border border-[#f1dfd0] bg-[#fffaf5] p-4">
-                <div className="flex h-40 w-40 items-center justify-center rounded-2xl bg-white">
-                  <QrCode className="h-28 w-28 text-[#241000]" />
+                <div className="flex h-40 w-40 items-center justify-center overflow-hidden rounded-2xl bg-white p-2">
+                  {qrCode ? (
+                    <img
+                      src={qrCode}
+                      alt="QR code for the public badge portal"
+                      className="h-full w-full object-contain"
+                    />
+                  ) : (
+                    <div className="flex flex-col items-center justify-center gap-2 text-[#a58a78]">
+                      <QrCode className="h-12 w-12" />
+
+                      <span className="text-[10px] font-medium">
+                        QR unavailable
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <p className="mt-3 text-center text-[10px] font-semibold uppercase tracking-wider text-[#a58a78]">
