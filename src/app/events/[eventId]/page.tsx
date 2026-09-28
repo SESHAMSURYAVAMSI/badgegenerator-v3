@@ -658,7 +658,7 @@ export default function EventWorkspacePage() {
               </div>
             </div>
 
-            {/* EVENT SETTINGS */}
+            {/* EVENT SETTINGS
             <div className="group rounded-3xl border border-stone-200 bg-white p-6 shadow-sm transition hover:border-orange-200 hover:shadow-lg">
               <div className="flex items-start justify-between">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-[#EA580C]">
@@ -684,7 +684,39 @@ export default function EventWorkspacePage() {
                 <Settings2 className="h-3.5 w-3.5" />
                 Event configuration
               </div>
-            </div>
+            </div> */}
+            {/* EVENT SETTINGS */}
+<Link
+  href={`/events/${eventId}/settings`}
+  className="group rounded-3xl border border-stone-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-xl hover:shadow-orange-900/5"
+>
+  <div className="flex items-start justify-between">
+    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-[#EA580C] transition group-hover:scale-105">
+      <Settings2 className="h-6 w-6" />
+    </div>
+
+    <ArrowRight className="h-5 w-5 text-stone-300 transition group-hover:translate-x-1 group-hover:text-[#EA580C]" />
+  </div>
+
+  <h3 className="mt-6 text-lg font-bold">
+    Event Settings
+  </h3>
+
+  <p className="mt-2 text-sm leading-6 text-stone-500">
+    Update event details, dates, location,
+    status, and event-specific configuration.
+  </p>
+
+  <div className="mt-5 flex items-center justify-between border-t border-stone-100 pt-4">
+    <span className="text-xs font-bold text-[#EA580C]">
+      Open Settings
+    </span>
+
+    <span className="text-xs font-semibold text-stone-400">
+      Configure
+    </span>
+  </div>
+</Link>
 
             {/* BADGEFLOW INFO */}
             <div className="rounded-3xl border border-stone-200 bg-[#241000] p-6 text-white shadow-sm">
