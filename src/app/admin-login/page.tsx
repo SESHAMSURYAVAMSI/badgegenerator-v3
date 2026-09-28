@@ -308,6 +308,14 @@ export default function AdminLoginPage() {
                       )}
                     </button>
                   </div>
+                    <div className="mt-2 flex justify-end">
+    <Link
+      href="/reset-password"
+      className="text-xs font-semibold text-[#EA580C] transition-colors hover:text-[#c2410c]"
+    >
+      Reset password
+    </Link>
+  </div>
                 </div>
 
                 {/* Error */}
