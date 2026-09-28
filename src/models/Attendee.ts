@@ -8,6 +8,7 @@ export interface IAttendee {
 
   name: string;
   email: string;
+  phone?: string;
 
   registrationNumber: string;
   category: string;
@@ -46,10 +47,17 @@ const AttendeeSchema = new Schema<IAttendee>(
       lowercase: true,
     },
 
+    phone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     registrationNumber: {
       type: String,
       required: true,
       trim: true,
+      uppercase: true,
     },
 
     category: {
@@ -91,10 +99,29 @@ const AttendeeSchema = new Schema<IAttendee>(
   },
 );
 
-AttendeeSchema.index({
-  eventId: 1,
-  registrationNumber: 1,
-});
+/*
+ * IMPORTANT:
+ *
+ * Registration number is unique ONLY
+ * inside an individual event.
+ *
+ * Therefore:
+ *
+ * Event A + ACVS-001 -> unique
+ * Event A + ACVS-001 -> duplicate
+ *
+ * Event B + ACVS-001 -> allowed
+ * Event C + ACVS-001 -> allowed
+ */
+AttendeeSchema.index(
+  {
+    eventId: 1,
+    registrationNumber: 1,
+  },
+  {
+    unique: true,
+  },
+);
 
 AttendeeSchema.index({
   eventId: 1,

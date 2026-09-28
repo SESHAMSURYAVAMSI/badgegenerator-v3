@@ -1,10 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useState } from "react";
+import {
+  FormEvent,
+  useEffect,
+  useState,
+} from "react";
 import { useParams } from "next/navigation";
 import { motion } from "framer-motion";
+
 import ExportAttendeesButton from "@/components/attendees/ExportAttendeesButton";
+
 import {
   ArrowLeft,
   BadgeCheck,
@@ -28,16 +34,20 @@ import {
 interface Attendee {
   _id: string;
   eventId: string;
+
   name: string;
   email: string;
-  phone: string;
+  phone?: string;
+
   registrationNumber: string;
   category: string;
   qrValue: string;
-  status:
-    | "registered"
-    | "checked-in"
-    | "cancelled";
+
+  badgeGenerated: boolean;
+  badgeUrl: string;
+  badgeGeneratedAt?: string;
+  badgeGenerationCount: number;
+
   createdAt: string;
   updatedAt: string;
 }
@@ -47,7 +57,10 @@ interface EventInfo {
   name: string;
   code: string;
   location?: string;
-  status: "draft" | "active" | "completed";
+  status:
+    | "draft"
+    | "active"
+    | "completed";
   attendeeCount: number;
   badgeCount: number;
 }
@@ -90,22 +103,21 @@ function formatDate(date?: string) {
     return "—";
   }
 
-  return parsed.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
+  return parsed.toLocaleDateString(
+    "en-IN",
+    {
+      day: "2-digit",
+      month: "short",
+      year: "numeric",
+    },
+  );
 }
 
-function statusClasses(
-  status: Attendee["status"],
+function badgeStatusClasses(
+  badgeGenerated: boolean,
 ) {
-  if (status === "checked-in") {
+  if (badgeGenerated) {
     return "border-emerald-200 bg-emerald-50 text-emerald-700";
-  }
-
-  if (status === "cancelled") {
-    return "border-red-200 bg-red-50 text-red-600";
   }
 
   return "border-orange-200 bg-orange-50 text-orange-700";
@@ -121,9 +133,8 @@ export default function AttendeesPage() {
   const [event, setEvent] =
     useState<EventInfo | null>(null);
 
-  const [attendees, setAttendees] = useState<
-    Attendee[]
-  >([]);
+  const [attendees, setAttendees] =
+    useState<Attendee[]>([]);
 
   const [pagination, setPagination] =
     useState<Pagination>({
@@ -135,7 +146,9 @@ export default function AttendeesPage() {
       hasPreviousPage: false,
     });
 
-  const [search, setSearch] = useState("");
+  const [search, setSearch] =
+    useState("");
+
   const [searchInput, setSearchInput] =
     useState("");
 
@@ -145,7 +158,8 @@ export default function AttendeesPage() {
   const [isSubmitting, setIsSubmitting] =
     useState(false);
 
-  const [error, setError] = useState("");
+  const [error, setError] =
+    useState("");
 
   const [formError, setFormError] =
     useState("");
@@ -169,7 +183,8 @@ export default function AttendeesPage() {
         },
       );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -196,26 +211,33 @@ export default function AttendeesPage() {
       setIsLoading(true);
       setError("");
 
-      const params = new URLSearchParams({
-        page: String(requestedPage),
-        limit: "10",
-      });
+      const params =
+        new URLSearchParams({
+          page: String(
+            requestedPage,
+          ),
+          limit: "10",
+        });
 
-      if (requestedSearch.trim()) {
+      if (
+        requestedSearch.trim()
+      ) {
         params.set(
           "search",
           requestedSearch.trim(),
         );
       }
 
-      const response = await fetch(
-        `/api/events/${eventId}/attendees?${params.toString()}`,
-        {
-          cache: "no-store",
-        },
-      );
+      const response =
+        await fetch(
+          `/api/events/${eventId}/attendees?${params.toString()}`,
+          {
+            cache: "no-store",
+          },
+        );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -224,7 +246,9 @@ export default function AttendeesPage() {
         );
       }
 
-      setAttendees(data.attendees ?? []);
+      setAttendees(
+        data.attendees ?? [],
+      );
 
       setPagination(
         data.pagination ?? {
@@ -264,12 +288,16 @@ export default function AttendeesPage() {
 
     setSearch(nextSearch);
 
-    loadAttendees(1, nextSearch);
+    loadAttendees(
+      1,
+      nextSearch,
+    );
   }
 
   function clearSearch() {
     setSearchInput("");
     setSearch("");
+
     loadAttendees(1, "");
   }
 
@@ -298,29 +326,52 @@ export default function AttendeesPage() {
       return;
     }
 
+    if (!form.email.trim()) {
+      setFormError(
+        "Email is required.",
+      );
+
+      return;
+    }
+
+    if (
+      !form.registrationNumber.trim()
+    ) {
+      setFormError(
+        "Registration number is required.",
+      );
+
+      return;
+    }
+
     try {
       setIsSubmitting(true);
 
-      const response = await fetch(
-        `/api/events/${eventId}/attendees`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
+      const response =
+        await fetch(
+          `/api/events/${eventId}/attendees`,
+          {
+            method: "POST",
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+            body: JSON.stringify({
+              name: form.name.trim(),
+              email: form.email.trim(),
+              phone: form.phone.trim(),
+              registrationNumber:
+                form.registrationNumber.trim(),
+              category:
+                form.category.trim(),
+              qrValue:
+                form.qrValue.trim(),
+            }),
           },
-          body: JSON.stringify({
-            name: form.name.trim(),
-            email: form.email.trim(),
-            phone: form.phone.trim(),
-            registrationNumber:
-              form.registrationNumber.trim(),
-            category: form.category.trim(),
-            qrValue: form.qrValue.trim(),
-          }),
-        },
-      );
+        );
 
-      const data = await response.json();
+      const data =
+        await response.json();
 
       if (!response.ok) {
         throw new Error(
@@ -419,7 +470,8 @@ export default function AttendeesPage() {
             </div>
 
             <h1 className="mt-4 text-3xl font-bold tracking-tight sm:text-4xl">
-              {event?.name || "Attendees"}
+              {event?.name ||
+                "Attendees"}
             </h1>
 
             <div className="mt-3 flex flex-col gap-2 text-sm text-stone-500 sm:flex-row sm:flex-wrap sm:gap-x-5">
@@ -457,7 +509,9 @@ export default function AttendeesPage() {
               onClick={() => {
                 setForm(initialForm);
                 setFormError("");
-                setShowAddModal(true);
+                setShowAddModal(
+                  true,
+                );
               }}
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-600/20 transition hover:bg-[#c2410c]"
             >
@@ -598,7 +652,8 @@ export default function AttendeesPage() {
                 )}
               </div>
             </div>
-          ) : attendees.length === 0 ? (
+          ) : attendees.length ===
+            0 ? (
             <div className="px-6 py-20 text-center">
               <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 text-[#EA580C]">
                 <Users className="h-8 w-8" />
@@ -621,7 +676,9 @@ export default function AttendeesPage() {
                   <button
                     type="button"
                     onClick={() =>
-                      setShowAddModal(true)
+                      setShowAddModal(
+                        true,
+                      )
                     }
                     className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-600/20 hover:bg-[#c2410c]"
                   >
@@ -662,7 +719,7 @@ export default function AttendeesPage() {
                       </th>
 
                       <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">
-                        Status
+                        Badge Status
                       </th>
 
                       <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">
@@ -673,9 +730,14 @@ export default function AttendeesPage() {
 
                   <tbody>
                     {attendees.map(
-                      (attendee, index) => (
+                      (
+                        attendee,
+                        index,
+                      ) => (
                         <motion.tr
-                          key={attendee._id}
+                          key={
+                            attendee._id
+                          }
                           initial={{
                             opacity: 0,
                             y: 8,
@@ -686,7 +748,8 @@ export default function AttendeesPage() {
                           }}
                           transition={{
                             delay: Math.min(
-                              index * 0.03,
+                              index *
+                                0.03,
                               0.2,
                             ),
                           }}
@@ -696,26 +759,34 @@ export default function AttendeesPage() {
                             <div className="flex items-center gap-3">
                               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-sm font-bold text-[#EA580C]">
                                 {attendee.name
-                                  .charAt(0)
+                                  .charAt(
+                                    0,
+                                  )
                                   .toUpperCase()}
                               </div>
 
                               <div className="min-w-0">
                                 <p className="truncate text-sm font-semibold">
-                                  {attendee.name}
+                                  {
+                                    attendee.name
+                                  }
                                 </p>
 
                                 {attendee.email && (
                                   <span className="mt-1 flex items-center gap-1.5 text-xs text-stone-400">
                                     <Mail className="h-3 w-3" />
-                                    {attendee.email}
+                                    {
+                                      attendee.email
+                                    }
                                   </span>
                                 )}
 
                                 {attendee.phone && (
                                   <span className="mt-1 flex items-center gap-1.5 text-xs text-stone-400">
                                     <Phone className="h-3 w-3" />
-                                    {attendee.phone}
+                                    {
+                                      attendee.phone
+                                    }
                                   </span>
                                 )}
                               </div>
@@ -742,21 +813,22 @@ export default function AttendeesPage() {
                               <QrCode className="h-4 w-4 text-[#EA580C]" />
 
                               <span className="max-w-32 truncate text-xs text-stone-500">
-                                {attendee.qrValue}
+                                {
+                                  attendee.qrValue
+                                }
                               </span>
                             </div>
                           </td>
 
                           <td className="px-6 py-4">
                             <span
-                              className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${statusClasses(
-                                attendee.status,
+                              className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide ${badgeStatusClasses(
+                                attendee.badgeGenerated,
                               )}`}
                             >
-                              {attendee.status.replace(
-                                "-",
-                                " ",
-                              )}
+                              {attendee.badgeGenerated
+                                ? "Generated"
+                                : "Pending"}
                             </span>
                           </td>
 
@@ -774,9 +846,14 @@ export default function AttendeesPage() {
 
               <div className="divide-y divide-stone-100 md:hidden">
                 {attendees.map(
-                  (attendee, index) => (
+                  (
+                    attendee,
+                    index,
+                  ) => (
                     <motion.div
-                      key={attendee._id}
+                      key={
+                        attendee._id
+                      }
                       initial={{
                         opacity: 0,
                         y: 8,
@@ -787,7 +864,8 @@ export default function AttendeesPage() {
                       }}
                       transition={{
                         delay: Math.min(
-                          index * 0.03,
+                          index *
+                            0.03,
                           0.2,
                         ),
                       }}
@@ -797,13 +875,17 @@ export default function AttendeesPage() {
                         <div className="flex min-w-0 items-center gap-3">
                           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-sm font-bold text-[#EA580C]">
                             {attendee.name
-                              .charAt(0)
+                              .charAt(
+                                0,
+                              )
                               .toUpperCase()}
                           </div>
 
                           <div className="min-w-0">
                             <p className="truncate text-sm font-bold">
-                              {attendee.name}
+                              {
+                                attendee.name
+                              }
                             </p>
 
                             <p className="mt-1 text-xs text-stone-400">
@@ -815,14 +897,13 @@ export default function AttendeesPage() {
                         </div>
 
                         <span
-                          className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase ${statusClasses(
-                            attendee.status,
+                          className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase ${badgeStatusClasses(
+                            attendee.badgeGenerated,
                           )}`}
                         >
-                          {attendee.status.replace(
-                            "-",
-                            " ",
-                          )}
+                          {attendee.badgeGenerated
+                            ? "Generated"
+                            : "Pending"}
                         </span>
                       </div>
 
@@ -844,7 +925,9 @@ export default function AttendeesPage() {
                           </p>
 
                           <p className="mt-1 truncate text-xs font-semibold">
-                            {attendee.qrValue}
+                            {
+                              attendee.qrValue
+                            }
                           </p>
                         </div>
                       </div>
@@ -852,14 +935,18 @@ export default function AttendeesPage() {
                       {attendee.email && (
                         <p className="mt-3 flex items-center gap-2 text-xs text-stone-400">
                           <Mail className="h-3.5 w-3.5" />
-                          {attendee.email}
+                          {
+                            attendee.email
+                          }
                         </p>
                       )}
 
                       {attendee.phone && (
                         <p className="mt-2 flex items-center gap-2 text-xs text-stone-400">
                           <Phone className="h-3.5 w-3.5" />
-                          {attendee.phone}
+                          {
+                            attendee.phone
+                          }
                         </p>
                       )}
                     </motion.div>
@@ -875,7 +962,8 @@ export default function AttendeesPage() {
                 <p className="text-xs text-stone-500">
                   Showing{" "}
                   <span className="font-semibold text-stone-700">
-                    {(pagination.page - 1) *
+                    {(pagination.page -
+                      1) *
                       pagination.limit +
                       1}
                   </span>{" "}
@@ -889,7 +977,9 @@ export default function AttendeesPage() {
                   </span>{" "}
                   of{" "}
                   <span className="font-semibold text-stone-700">
-                    {pagination.total}
+                    {
+                      pagination.total
+                    }
                   </span>{" "}
                   attendees
                 </p>
@@ -902,7 +992,8 @@ export default function AttendeesPage() {
                     }
                     onClick={() =>
                       loadAttendees(
-                        pagination.page - 1,
+                        pagination.page -
+                          1,
                         search,
                       )
                     }
@@ -923,7 +1014,8 @@ export default function AttendeesPage() {
                     }
                     onClick={() =>
                       loadAttendees(
-                        pagination.page + 1,
+                        pagination.page +
+                          1,
                         search,
                       )
                     }
@@ -973,7 +1065,9 @@ export default function AttendeesPage() {
               <button
                 type="button"
                 onClick={() =>
-                  setShowAddModal(false)
+                  setShowAddModal(
+                    false,
+                  )
                 }
                 className="flex h-9 w-9 items-center justify-center rounded-lg text-stone-400 transition hover:bg-stone-100 hover:text-stone-700"
               >
@@ -982,7 +1076,9 @@ export default function AttendeesPage() {
             </div>
 
             <form
-              onSubmit={handleAddAttendee}
+              onSubmit={
+                handleAddAttendee
+              }
               className="space-y-5 p-6 sm:p-8"
             >
               <div>
@@ -1021,6 +1117,9 @@ export default function AttendeesPage() {
                     className="mb-2 block text-sm font-semibold"
                   >
                     Email
+                    <span className="ml-1 text-[#EA580C]">
+                      *
+                    </span>
                   </label>
 
                   <input
@@ -1034,6 +1133,7 @@ export default function AttendeesPage() {
                       )
                     }
                     placeholder="rahul@example.com"
+                    required
                     className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm outline-none transition focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
                   />
                 </div>
@@ -1104,7 +1204,9 @@ export default function AttendeesPage() {
                   <input
                     id="attendee-category"
                     type="text"
-                    value={form.category}
+                    value={
+                      form.category
+                    }
                     onChange={(event) =>
                       updateForm(
                         "category",
@@ -1132,7 +1234,9 @@ export default function AttendeesPage() {
                   <input
                     id="qr-value"
                     type="text"
-                    value={form.qrValue}
+                    value={
+                      form.qrValue
+                    }
                     onChange={(event) =>
                       updateForm(
                         "qrValue",
@@ -1161,7 +1265,9 @@ export default function AttendeesPage() {
                 <button
                   type="button"
                   onClick={() =>
-                    setShowAddModal(false)
+                    setShowAddModal(
+                      false,
+                    )
                   }
                   className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-200 bg-white px-5 text-sm font-semibold text-stone-600 transition hover:bg-stone-50"
                 >
@@ -1170,7 +1276,9 @@ export default function AttendeesPage() {
 
                 <button
                   type="submit"
-                  disabled={isSubmitting}
+                  disabled={
+                    isSubmitting
+                  }
                   className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-6 text-sm font-semibold text-white shadow-lg shadow-orange-600/20 transition hover:bg-[#c2410c] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   {isSubmitting ? (

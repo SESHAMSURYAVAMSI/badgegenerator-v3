@@ -11,6 +11,14 @@ interface RouteContext {
   }>;
 }
 
+function normalizeRegistrationNumber(
+  value: unknown,
+): string {
+  return String(value ?? "")
+    .trim()
+    .toUpperCase();
+}
+
 export async function GET(
   request: Request,
   context: RouteContext,
@@ -29,14 +37,27 @@ export async function GET(
       );
     }
 
-    const { eventId } = await context.params;
+    const { eventId } =
+      await context.params;
+
+    if (!eventId) {
+      return NextResponse.json(
+        {
+          message:
+            "Event ID is required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
 
     await connectDB();
 
     const event = await Event.findOne({
       _id: eventId,
       createdBy: session.user.id,
-    });
+    }).lean();
 
     if (!event) {
       return NextResponse.json(
@@ -49,17 +70,116 @@ export async function GET(
       );
     }
 
-    const attendees = await Attendee.find({
+    const { searchParams } =
+      new URL(request.url);
+
+    const page = Math.max(
+      1,
+      Number(
+        searchParams.get("page") || "1",
+      ),
+    );
+
+    const limit = Math.min(
+      100,
+      Math.max(
+        1,
+        Number(
+          searchParams.get("limit") ||
+            "10",
+        ),
+      ),
+    );
+
+    const search =
+      searchParams
+        .get("search")
+        ?.trim() || "";
+
+    const skip =
+      (page - 1) * limit;
+
+    const filter: Record<
+      string,
+      unknown
+    > = {
       eventId: event._id,
-    })
-      .sort({
-        createdAt: -1,
-      })
-      .lean();
+    };
+
+    if (search) {
+      const escapedSearch =
+        search.replace(
+          /[.*+?^${}()|[\]\\]/g,
+          "\\$&",
+        );
+
+      const regex = new RegExp(
+        escapedSearch,
+        "i",
+      );
+
+      filter.$or = [
+        {
+          name: regex,
+        },
+        {
+          email: regex,
+        },
+        {
+          phone: regex,
+        },
+        {
+          registrationNumber: regex,
+        },
+        {
+          category: regex,
+        },
+        {
+          qrValue: regex,
+        },
+      ];
+    }
+
+    const [
+      attendees,
+      total,
+    ] = await Promise.all([
+      Attendee.find(filter)
+        .sort({
+          createdAt: -1,
+        })
+        .skip(skip)
+        .limit(limit)
+        .lean(),
+
+      Attendee.countDocuments(
+        filter,
+      ),
+    ]);
+
+    const totalPages =
+      Math.max(
+        1,
+        Math.ceil(total / limit),
+      );
 
     return NextResponse.json({
       success: true,
+
       attendees,
+
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+
+        hasNextPage:
+          page < totalPages,
+
+        hasPreviousPage:
+          page > 1,
+      },
     });
   } catch (error) {
     console.error(
@@ -69,7 +189,8 @@ export async function GET(
 
     return NextResponse.json(
       {
-        message: "Failed to fetch attendees",
+        message:
+          "Failed to fetch attendees",
       },
       {
         status: 500,
@@ -96,9 +217,23 @@ export async function POST(
       );
     }
 
-    const { eventId } = await context.params;
+    const { eventId } =
+      await context.params;
 
-    const body = await request.json();
+    if (!eventId) {
+      return NextResponse.json(
+        {
+          message:
+            "Event ID is required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    const body =
+      await request.json();
 
     const name = String(
       body.name ?? "",
@@ -110,27 +245,23 @@ export async function POST(
       .trim()
       .toLowerCase();
 
+    const phone = String(
+      body.phone ?? "",
+    ).trim();
+
     const category = String(
       body.category ?? "",
     ).trim();
 
     /*
-     * Registration number is now completely
-     * controlled by the user.
-     *
-     * BadgeFlow will NOT generate one.
+     * Registration number belongs
+     * to THIS EVENT only.
      */
-    const registrationNumber = String(
-      body.registrationNumber ?? "",
-    ).trim();
+    const registrationNumber =
+      normalizeRegistrationNumber(
+        body.registrationNumber,
+      );
 
-    /*
-     * QR value can be supplied separately.
-     *
-     * If no QR value is supplied,
-     * the provided registration number
-     * will be used.
-     */
     const qrValue = String(
       body.qrValue ??
         registrationNumber,
@@ -139,7 +270,8 @@ export async function POST(
     if (!name) {
       return NextResponse.json(
         {
-          message: "Name is required",
+          message:
+            "Name is required",
         },
         {
           status: 400,
@@ -150,7 +282,8 @@ export async function POST(
     if (!email) {
       return NextResponse.json(
         {
-          message: "Email is required",
+          message:
+            "Email is required",
         },
         {
           status: 400,
@@ -158,12 +291,6 @@ export async function POST(
       );
     }
 
-    /*
-     * Registration number is mandatory.
-     *
-     * IMPORTANT:
-     * There is NO automatic fallback here.
-     */
     if (!registrationNumber) {
       return NextResponse.json(
         {
@@ -186,7 +313,8 @@ export async function POST(
     if (!event) {
       return NextResponse.json(
         {
-          message: "Event not found",
+          message:
+            "Event not found",
         },
         {
           status: 404,
@@ -195,21 +323,26 @@ export async function POST(
     }
 
     /*
-     * Check whether the supplied
-     * registration number already exists
-     * for this event.
+     * IMPORTANT:
+     *
+     * This duplicate check is scoped
+     * ONLY to the current event.
+     *
+     * Same registration number can be
+     * used in another event.
      */
     const existing =
       await Attendee.findOne({
         eventId: event._id,
         registrationNumber,
-      });
+      }).lean();
 
     if (existing) {
       return NextResponse.json(
         {
+          success: false,
           message:
-            "Registration number already exists for this event.",
+            `Registration number ${registrationNumber} already exists for this event.`,
         },
         {
           status: 409,
@@ -217,39 +350,81 @@ export async function POST(
       );
     }
 
-    /*
-     * Create attendee using the EXACT
-     * registration number supplied by
-     * the user.
-     */
-    const attendee =
-      await Attendee.create({
-        eventId: event._id,
-        name,
-        email,
-        category,
+    let attendee;
 
-        registrationNumber,
+    try {
+      attendee =
+        await Attendee.create({
+          eventId: event._id,
 
-        qrValue:
-          qrValue ||
+          name,
+          email,
+          phone,
+
           registrationNumber,
 
-        badgeGenerated: false,
-        badgeUrl: "",
-        badgeGenerationCount: 0,
-      });
+          category,
+
+          qrValue:
+            qrValue ||
+            registrationNumber,
+
+          badgeGenerated: false,
+          badgeUrl: "",
+          badgeGenerationCount: 0,
+        });
+    } catch (error) {
+      /*
+       * Handles a race condition where
+       * another request creates the same
+       * registration number at exactly
+       * the same time.
+       */
+      if (
+        error &&
+        typeof error === "object" &&
+        "code" in error &&
+        (error as { code?: number })
+          .code === 11000
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              `Registration number ${registrationNumber} already exists for this event.`,
+          },
+          {
+            status: 409,
+          },
+        );
+      }
+
+      throw error;
+    }
 
     /*
-     * Update total attendee count.
+     * Recalculate attendee count from
+     * the actual event's attendees.
      */
+    const attendeeCount =
+      await Attendee.countDocuments({
+        eventId: event._id,
+      });
+
+    const badgeCount =
+      await Attendee.countDocuments({
+        eventId: event._id,
+        badgeGenerated: true,
+      });
+
     await Event.updateOne(
       {
         _id: event._id,
       },
       {
-        $inc: {
-          attendeeCount: 1,
+        $set: {
+          attendeeCount,
+          badgeCount,
         },
       },
     );
@@ -258,6 +433,8 @@ export async function POST(
       {
         success: true,
         attendee,
+        attendeeCount,
+        badgeCount,
       },
       {
         status: 201,
@@ -271,7 +448,8 @@ export async function POST(
 
     return NextResponse.json(
       {
-        message: "Failed to create attendee",
+        message:
+          "Failed to create attendee",
       },
       {
         status: 500,
@@ -298,9 +476,11 @@ export async function PATCH(
       );
     }
 
-    const { eventId } = await context.params;
+    const { eventId } =
+      await context.params;
 
-    const body = await request.json();
+    const body =
+      await request.json();
 
     const attendeeId = String(
       body.attendeeId ?? "",
@@ -328,7 +508,8 @@ export async function PATCH(
     if (!event) {
       return NextResponse.json(
         {
-          message: "Event not found",
+          message:
+            "Event not found",
         },
         {
           status: 404,
@@ -362,9 +543,6 @@ export async function PATCH(
         ? String(body.badgeUrl)
         : attendee.badgeUrl;
 
-    /*
-     * Badge has been generated.
-     */
     if (
       badgeGenerated === true
     ) {
@@ -380,12 +558,7 @@ export async function PATCH(
       attendee.badgeGenerationCount =
         (attendee.badgeGenerationCount ??
           0) + 1;
-    }
-
-    /*
-     * Badge generation has been reset.
-     */
-    else if (
+    } else if (
       badgeGenerated === false
     ) {
       attendee.badgeGenerated =
@@ -396,13 +569,7 @@ export async function PATCH(
 
       attendee.badgeGeneratedAt =
         undefined;
-    }
-
-    /*
-     * Only update badge URL if it was
-     * explicitly provided.
-     */
-    else if (
+    } else if (
       body.badgeUrl !== undefined
     ) {
       attendee.badgeUrl =
@@ -411,14 +578,15 @@ export async function PATCH(
 
     await attendee.save();
 
-    /*
-     * Recalculate generated badge count
-     * from the actual attendees.
-     */
     const generatedBadges =
       await Attendee.countDocuments({
         eventId: event._id,
         badgeGenerated: true,
+      });
+
+    const attendeeCount =
+      await Attendee.countDocuments({
+        eventId: event._id,
       });
 
     await Event.updateOne(
@@ -427,6 +595,7 @@ export async function PATCH(
       },
       {
         $set: {
+          attendeeCount,
           badgeCount:
             generatedBadges,
         },
@@ -437,6 +606,7 @@ export async function PATCH(
       success: true,
       attendee,
       generatedBadges,
+      attendeeCount,
     });
   } catch (error) {
     console.error(

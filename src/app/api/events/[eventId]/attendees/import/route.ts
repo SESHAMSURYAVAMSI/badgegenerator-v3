@@ -53,7 +53,9 @@ function cleanString(
 function normalizeRegistrationNumber(
   value: string,
 ): string {
-  return value.trim().toUpperCase();
+  return value
+    .trim()
+    .toUpperCase();
 }
 
 function isValidEmail(
@@ -176,6 +178,12 @@ export async function POST(
     const cleanRows: CleanRow[] =
       [];
 
+    /*
+     * Keeps registration numbers
+     * unique inside this uploaded file.
+     *
+     * This is NOT a global user check.
+     */
     const fileRegistrationNumbers =
       new Set<string>();
 
@@ -329,6 +337,17 @@ export async function POST(
     /*
      * Check supplied registration
      * numbers against MongoDB.
+     *
+     * IMPORTANT:
+     *
+     * The check contains eventId.
+     *
+     * Therefore:
+     *
+     * Event A + ACVS-001 = duplicate
+     * Event B + ACVS-001 = allowed
+     *
+     * We do NOT check email/name globally.
      */
     const providedRegistrationNumbers =
       cleanRows.map(
@@ -357,6 +376,17 @@ export async function POST(
         ),
       );
 
+    /*
+     * IMPORTANT:
+     *
+     * No legacy "status" field here.
+     *
+     * The current Attendee model uses:
+     *
+     * badgeGenerated
+     * badgeUrl
+     * badgeGenerationCount
+     */
     const attendeesToInsert: Array<{
       eventId: typeof event._id;
       name: string;
@@ -365,8 +395,6 @@ export async function POST(
       registrationNumber: string;
       category: string;
       qrValue: string;
-      status: "registered";
-
       badgeGenerated: boolean;
       badgeUrl: string;
       badgeGenerationCount: number;
@@ -381,7 +409,7 @@ export async function POST(
 
       /*
        * Registration number already
-       * exists in this event.
+       * exists in THIS event.
        */
       if (
         existingNumbers.has(
@@ -392,7 +420,7 @@ export async function POST(
           rowNumber:
             row.rowNumber,
           message:
-            `Registration number already exists: ${registrationNumber}`,
+            `Registration number already exists in this event: ${registrationNumber}`,
         });
 
         continue;
@@ -419,7 +447,6 @@ export async function POST(
         registrationNumber,
         category: row.category,
         qrValue,
-        status: "registered",
 
         badgeGenerated: false,
         badgeUrl: "",
@@ -499,19 +526,17 @@ export async function POST(
 
     /*
      * Recalculate attendee count
-     * from MongoDB.
+     * from the actual attendees
+     * belonging to THIS event.
      */
     const attendeeCount =
       await Attendee.countDocuments({
         eventId: event._id,
-        status: {
-          $ne: "cancelled",
-        },
       });
 
     /*
      * Recalculate generated badge
-     * count as well.
+     * count from THIS event.
      */
     const badgeCount =
       await Attendee.countDocuments({

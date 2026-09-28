@@ -17,6 +17,11 @@ export interface BadgeAttendee {
   registrationNumber: string;
   category: string;
   qrValue: string;
+
+  badgeGenerated?: boolean;
+  badgeUrl?: string;
+  badgeGeneratedAt?: string;
+  badgeGenerationCount?: number;
 }
 
 interface AttendeeSelectorProps {
