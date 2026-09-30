@@ -12,11 +12,14 @@ import {
   MapPin,
   Search,
   ShieldCheck,
+  ScanLine,
+  ArrowRight,
   Ticket,
   UserRound,
   X,
 } from "lucide-react";
 
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import {
   useMemo,
@@ -1018,6 +1021,22 @@ export default function PublicBadgePage() {
               </div>
             </div>
           )}
+
+        {/* QR Scanner */}
+        <div className="mx-auto mt-8 max-w-2xl">
+          <Link
+            href={`/public/${encodeURIComponent(publicId)}/scan`}
+            className="group flex w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-[#241000] to-[#EA580C] px-6 py-4 text-sm font-black text-white shadow-xl shadow-[#EA580C]/15 transition hover:-translate-y-0.5 hover:shadow-2xl"
+          >
+            <ScanLine className="h-5 w-5 transition-transform group-hover:scale-110" />
+            <span>Scan Attendee QR</span>
+            <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+          </Link>
+
+          <p className="mt-2 text-center text-xs text-[#8b6f5c]">
+            Select the event day and scanning module before opening the camera.
+          </p>
+        </div>
 
         {/* Security */}
         <div className="mx-auto mt-10 flex max-w-2xl items-center justify-center gap-2 text-center text-xs text-[#a58a78]">

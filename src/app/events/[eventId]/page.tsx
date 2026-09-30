@@ -18,6 +18,7 @@ import {
   MapPin,
   QrCode,
   RefreshCw,
+  ScanLine,
   Settings2,
   Sparkles,
   TicketCheck,
@@ -626,6 +627,74 @@ export default function EventWorkspacePage() {
               </div>
             </Link>
 
+            {/* EVENT SCANNING */}
+            <Link
+              href={`/events/${eventId}/scanning`}
+              className="group rounded-3xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-orange-300 hover:shadow-xl hover:shadow-orange-900/5"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EA580C] text-white transition group-hover:scale-105">
+                  <ScanLine className="h-6 w-6" />
+                </div>
+
+                <ArrowRight className="h-5 w-5 text-orange-300 transition group-hover:translate-x-1 group-hover:text-[#EA580C]" />
+              </div>
+
+              <h3 className="mt-6 text-lg font-bold">
+                Scanning Module
+              </h3>
+
+              <p className="mt-2 text-sm leading-6 text-stone-500">
+                Configure scanning days, breakfast, lunch,
+                dinner, kit bag, certificates, and custom
+                modules for this event.
+              </p>
+
+              <div className="mt-5 flex items-center justify-between border-t border-orange-100 pt-4">
+                <span className="text-xs font-bold text-[#EA580C]">
+                  Configure scanning
+                </span>
+
+                <span className="text-xs font-semibold text-stone-400">
+                  Open
+                </span>
+              </div>
+            </Link>
+
+            {/* SCANNING DASHBOARD */}
+            <Link
+              href={`/events/${eventId}/scanning/dashboard`}
+              className="group rounded-3xl border border-stone-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-xl hover:shadow-orange-900/5"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-[#EA580C] transition group-hover:scale-105">
+                  <BarChart3 className="h-6 w-6" />
+                </div>
+
+                <ArrowRight className="h-5 w-5 text-stone-300 transition group-hover:translate-x-1 group-hover:text-[#EA580C]" />
+              </div>
+
+              <h3 className="mt-6 text-lg font-bold">
+                Scanning Dashboard
+              </h3>
+
+              <p className="mt-2 text-sm leading-6 text-stone-500">
+                Monitor successful scans, duplicate attempts,
+                attendee coverage, module performance, and
+                live scanning activity.
+              </p>
+
+              <div className="mt-5 flex items-center justify-between border-t border-stone-100 pt-4">
+                <span className="text-xs font-bold text-[#EA580C]">
+                  Live analytics
+                </span>
+
+                <span className="text-xs font-semibold text-stone-400">
+                  View dashboard
+                </span>
+              </div>
+            </Link>
+
             {/* BADGE CONFIGURATION */}
             <Link
               href={`/events/${eventId}/badge`}
@@ -772,7 +841,7 @@ export default function EventWorkspacePage() {
             </span>
           </div>
 
-          <div className="mt-6 grid gap-3 md:grid-cols-3">
+          <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
             {/* ATTENDEES */}
             <Link
               href={`/events/${eventId}/attendees`}
@@ -835,6 +904,28 @@ export default function EventWorkspacePage() {
                   {event.badgeCount > 0
                     ? `${event.badgeCount.toLocaleString()} badges generated`
                     : "Configure badge design"}
+                </p>
+              </div>
+
+              <ChevronRight className="h-4 w-4 text-stone-300" />
+            </Link>
+
+            {/* SCANNING */}
+            <Link
+              href={`/events/${eventId}/scanning`}
+              className="flex items-center gap-4 rounded-2xl border border-stone-100 bg-stone-50/60 p-4 transition hover:border-orange-200 hover:bg-orange-50/50"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-[#EA580C]">
+                <ScanLine className="h-5 w-5" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold">
+                  Scanning setup
+                </p>
+
+                <p className="mt-1 text-xs text-stone-400">
+                  Configure event days and scanning modules
                 </p>
               </div>
 
