@@ -10,7 +10,15 @@ export interface IAttendee {
   email: string;
   phone?: string;
 
+  /*
+   * Registration number is ALWAYS stored.
+   *
+   * The user does not have to provide it.
+   * The API generates one automatically when
+   * the input is empty.
+   */
   registrationNumber: string;
+
   category: string;
 
   qrValue: string;
@@ -100,18 +108,16 @@ const AttendeeSchema = new Schema<IAttendee>(
 );
 
 /*
- * IMPORTANT:
- *
  * Registration number is unique ONLY
  * inside an individual event.
  *
- * Therefore:
+ * Example:
  *
- * Event A + ACVS-001 -> unique
- * Event A + ACVS-001 -> duplicate
+ * Event A + ACVS26-001 -> allowed
+ * Event A + ACVS26-001 -> duplicate
  *
- * Event B + ACVS-001 -> allowed
- * Event C + ACVS-001 -> allowed
+ * Event B + ACVS26-001 -> allowed
+ * Event C + ACVS26-001 -> allowed
  */
 AttendeeSchema.index(
   {

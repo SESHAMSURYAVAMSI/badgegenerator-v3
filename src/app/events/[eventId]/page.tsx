@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ArrowLeft,
+  BarChart3,
   ArrowRight,
   BadgeCheck,
   CalendarDays,
@@ -330,9 +331,7 @@ export default function EventWorkspacePage() {
                     <CalendarDays className="h-4 w-4 text-[#EA580C]" />
 
                     <span>
-                      {formatDate(
-                        event.startDate,
-                      )}
+                      {formatDate(event.startDate)}
                     </span>
 
                     {event.endDate && (
@@ -342,9 +341,7 @@ export default function EventWorkspacePage() {
                         </span>
 
                         <span>
-                          {formatDate(
-                            event.endDate,
-                          )}
+                          {formatDate(event.endDate)}
                         </span>
                       </>
                     )}
@@ -487,9 +484,7 @@ export default function EventWorkspacePage() {
             <p className="mt-4 text-2xl font-bold">
               {event.status === "active"
                 ? "Live"
-                : getStatusLabel(
-                    event.status,
-                  )}
+                : getStatusLabel(event.status)}
             </p>
 
             <p className="mt-1 text-xs text-stone-500">
@@ -553,7 +548,8 @@ export default function EventWorkspacePage() {
 
               <div className="mt-5 flex items-center justify-between border-t border-stone-100 pt-4">
                 <span className="text-xs font-bold text-[#EA580C]">
-                  {event.attendeeCount.toLocaleString()} attendees
+                  {event.attendeeCount.toLocaleString()}{" "}
+                  attendees
                 </span>
 
                 <span className="text-xs font-semibold text-stone-400">
@@ -596,6 +592,40 @@ export default function EventWorkspacePage() {
               </div>
             </Link>
 
+            {/* EVENT ANALYTICS */}
+            <Link
+              href={`/events/${eventId}/analytics`}
+              className="group rounded-3xl border border-orange-200 bg-gradient-to-br from-orange-50 via-white to-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-orange-300 hover:shadow-xl hover:shadow-orange-900/5"
+            >
+              <div className="flex items-start justify-between">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[#EA580C] text-white transition group-hover:scale-105">
+                  <BarChart3 className="h-6 w-6" />
+                </div>
+
+                <ArrowRight className="h-5 w-5 text-orange-300 transition group-hover:translate-x-1 group-hover:text-[#EA580C]" />
+              </div>
+
+              <h3 className="mt-6 text-lg font-bold">
+                Event Analytics
+              </h3>
+
+              <p className="mt-2 text-sm leading-6 text-stone-500">
+                Analyse registrations, badge generation,
+                categories, pending badges, and
+                generation rates for this event.
+              </p>
+
+              <div className="mt-5 flex items-center justify-between border-t border-orange-100 pt-4">
+                <span className="text-xs font-bold text-[#EA580C]">
+                  Live analytics
+                </span>
+
+                <span className="text-xs font-semibold text-stone-400">
+                  View report
+                </span>
+              </div>
+            </Link>
+
             {/* BADGE CONFIGURATION */}
             <Link
               href={`/events/${eventId}/badge`}
@@ -631,7 +661,7 @@ export default function EventWorkspacePage() {
             </Link>
 
             {/* BADGE GENERATION */}
-            <div className="group rounded-3xl border border-stone-200 bg-white p-6 shadow-sm transition hover:border-orange-200 hover:shadow-lg">
+            {/* <div className="group rounded-3xl border border-stone-200 bg-white p-6 shadow-sm transition hover:border-orange-200 hover:shadow-lg">
               <div className="flex items-start justify-between">
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-[#EA580C]">
                   <BadgeCheck className="h-6 w-6" />
@@ -647,27 +677,33 @@ export default function EventWorkspacePage() {
               </h3>
 
               <p className="mt-2 text-sm leading-6 text-stone-500">
-                Generate individual or bulk badges
-                using your configured design and
-                attendee QR data.
+                Generate attendee badges from your
+                saved badge configuration.
               </p>
 
-              <div className="mt-5 flex items-center gap-2 border-t border-stone-100 pt-4 text-xs font-semibold text-stone-400">
-                <QrCode className="h-3.5 w-3.5" />
-                Badge generator
-              </div>
-            </div>
+              <div className="mt-5 flex items-center justify-between border-t border-stone-100 pt-4">
+                <span className="text-xs font-bold text-[#EA580C]">
+                  {event.badgeCount.toLocaleString()}{" "}
+                  generated
+                </span>
 
-            {/* EVENT SETTINGS
-            <div className="group rounded-3xl border border-stone-200 bg-white p-6 shadow-sm transition hover:border-orange-200 hover:shadow-lg">
+                <span className="text-xs font-semibold text-stone-400">
+                  Prepare
+                </span>
+              </div>
+            </div> */}
+
+            {/* EVENT SETTINGS */}
+            <Link
+              href={`/events/${eventId}/settings`}
+              className="group rounded-3xl border border-stone-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-xl hover:shadow-orange-900/5"
+            >
               <div className="flex items-start justify-between">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-[#EA580C]">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-[#EA580C] transition group-hover:scale-105">
                   <Settings2 className="h-6 w-6" />
                 </div>
 
-                <span className="rounded-full border border-stone-200 bg-stone-50 px-2.5 py-1 text-[9px] font-bold uppercase tracking-wide text-stone-400">
-                  Coming Next
-                </span>
+                <ArrowRight className="h-5 w-5 text-stone-300 transition group-hover:translate-x-1 group-hover:text-[#EA580C]" />
               </div>
 
               <h3 className="mt-6 text-lg font-bold">
@@ -676,47 +712,19 @@ export default function EventWorkspacePage() {
 
               <p className="mt-2 text-sm leading-6 text-stone-500">
                 Update event details, dates, location,
-                status, and future event-specific
-                configuration.
+                status, and event-specific configuration.
               </p>
 
-              <div className="mt-5 flex items-center gap-2 border-t border-stone-100 pt-4 text-xs font-semibold text-stone-400">
-                <Settings2 className="h-3.5 w-3.5" />
-                Event configuration
+              <div className="mt-5 flex items-center justify-between border-t border-stone-100 pt-4">
+                <span className="text-xs font-bold text-[#EA580C]">
+                  Open Settings
+                </span>
+
+                <span className="text-xs font-semibold text-stone-400">
+                  Configure
+                </span>
               </div>
-            </div> */}
-            {/* EVENT SETTINGS */}
-<Link
-  href={`/events/${eventId}/settings`}
-  className="group rounded-3xl border border-stone-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:border-orange-200 hover:shadow-xl hover:shadow-orange-900/5"
->
-  <div className="flex items-start justify-between">
-    <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-orange-50 text-[#EA580C] transition group-hover:scale-105">
-      <Settings2 className="h-6 w-6" />
-    </div>
-
-    <ArrowRight className="h-5 w-5 text-stone-300 transition group-hover:translate-x-1 group-hover:text-[#EA580C]" />
-  </div>
-
-  <h3 className="mt-6 text-lg font-bold">
-    Event Settings
-  </h3>
-
-  <p className="mt-2 text-sm leading-6 text-stone-500">
-    Update event details, dates, location,
-    status, and event-specific configuration.
-  </p>
-
-  <div className="mt-5 flex items-center justify-between border-t border-stone-100 pt-4">
-    <span className="text-xs font-bold text-[#EA580C]">
-      Open Settings
-    </span>
-
-    <span className="text-xs font-semibold text-stone-400">
-      Configure
-    </span>
-  </div>
-</Link>
+            </Link>
 
             {/* BADGEFLOW INFO */}
             <div className="rounded-3xl border border-stone-200 bg-[#241000] p-6 text-white shadow-sm">
@@ -799,199 +807,69 @@ export default function EventWorkspacePage() {
               <ChevronRight className="h-4 w-4 text-stone-300" />
             </Link>
 
-            {/* BADGE CONFIGURATION */}
+            {/* BADGES */}
             <Link
               href={`/events/${eventId}/badge`}
-              className="flex items-center gap-4 rounded-2xl border border-orange-100 bg-orange-50/40 p-4 transition hover:border-orange-200 hover:bg-orange-50"
+              className="flex items-center gap-4 rounded-2xl border border-stone-100 bg-stone-50/60 p-4 transition hover:border-orange-200 hover:bg-orange-50/50"
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-[#EA580C]">
-                <Settings2 className="h-5 w-5" />
+              <div
+                className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${
+                  event.badgeCount > 0
+                    ? "bg-emerald-50 text-emerald-600"
+                    : "bg-orange-50 text-[#EA580C]"
+                }`}
+              >
+                {event.badgeCount > 0 ? (
+                  <CheckCircle2 className="h-5 w-5" />
+                ) : (
+                  <BadgeCheck className="h-5 w-5" />
+                )}
               </div>
 
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">
-                  Configure badge
+                  Badge setup
                 </p>
 
                 <p className="mt-1 text-xs text-stone-400">
-                  Open badge designer
+                  {event.badgeCount > 0
+                    ? `${event.badgeCount.toLocaleString()} badges generated`
+                    : "Configure badge design"}
                 </p>
               </div>
 
               <ChevronRight className="h-4 w-4 text-stone-300" />
             </Link>
 
-            {/* GENERATE BADGES */}
-            <div className="flex items-center gap-4 rounded-2xl border border-stone-100 bg-stone-50/60 p-4">
+            {/* ANALYTICS */}
+            <Link
+              href={`/events/${eventId}/analytics`}
+              className="flex items-center gap-4 rounded-2xl border border-stone-100 bg-stone-50/60 p-4 transition hover:border-orange-200 hover:bg-orange-50/50"
+            >
               <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-[#EA580C]">
-                <QrCode className="h-5 w-5" />
+                <BarChart3 className="h-5 w-5" />
               </div>
 
               <div className="min-w-0 flex-1">
                 <p className="text-sm font-semibold">
-                  Generate badges
+                  Event analytics
                 </p>
 
                 <p className="mt-1 text-xs text-stone-400">
-                  Available after badge design
+                  Review registration and badge progress
                 </p>
               </div>
-            </div>
+
+              <ChevronRight className="h-4 w-4 text-stone-300" />
+            </Link>
           </div>
         </div>
 
-        {/* INFORMATION */}
-        <div className="mt-8 grid gap-6 lg:grid-cols-2">
-          {/* EVENT INFORMATION */}
-          <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-[#EA580C]">
-                <FileText className="h-5 w-5" />
-              </div>
+        <div className="mt-6 flex flex-wrap items-center gap-2 text-xs text-stone-400">
+          <Clock3 className="h-3.5 w-3.5" />
 
-              <div>
-                <h2 className="text-base font-bold">
-                  Event information
-                </h2>
-
-                <p className="text-xs text-stone-400">
-                  Current event configuration
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              <div className="flex items-center justify-between gap-4 border-b border-stone-100 pb-4">
-                <span className="text-xs text-stone-400">
-                  Event name
-                </span>
-
-                <span className="text-right text-xs font-semibold">
-                  {event.name}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-4 border-b border-stone-100 pb-4">
-                <span className="text-xs text-stone-400">
-                  Event code
-                </span>
-
-                <span className="text-right text-xs font-bold text-[#EA580C]">
-                  {event.code}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-4 border-b border-stone-100 pb-4">
-                <span className="text-xs text-stone-400">
-                  Slug
-                </span>
-
-                <span className="max-w-[60%] truncate text-right text-xs font-semibold">
-                  {event.slug}
-                </span>
-              </div>
-
-              <div className="flex items-center justify-between gap-4">
-                <span className="text-xs text-stone-400">
-                  Status
-                </span>
-
-                <span
-                  className={`rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase ${getStatusClasses(
-                    event.status,
-                  )}`}
-                >
-                  {getStatusLabel(
-                    event.status,
-                  )}
-                </span>
-              </div>
-            </div>
-          </div>
-
-          {/* ACTIVITY */}
-          <div className="rounded-3xl border border-stone-200 bg-white p-6 shadow-sm sm:p-8">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-[#EA580C]">
-                <Clock3 className="h-5 w-5" />
-              </div>
-
-              <div>
-                <h2 className="text-base font-bold">
-                  Activity information
-                </h2>
-
-                <p className="text-xs text-stone-400">
-                  Event record timestamps
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              <div className="border-b border-stone-100 pb-4">
-                <p className="text-xs text-stone-400">
-                  Created
-                </p>
-
-                <p className="mt-1 text-sm font-semibold">
-                  {formatDateTime(
-                    event.createdAt,
-                  )}
-                </p>
-              </div>
-
-              <div className="border-b border-stone-100 pb-4">
-                <p className="text-xs text-stone-400">
-                  Last updated
-                </p>
-
-                <p className="mt-1 text-sm font-semibold">
-                  {formatDateTime(
-                    event.updatedAt,
-                  )}
-                </p>
-              </div>
-
-              <div>
-                <p className="text-xs text-stone-400">
-                  Event ID
-                </p>
-
-                <p className="mt-1 break-all font-mono text-xs text-stone-500">
-                  {event._id}
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* FOOTER ACTIONS */}
-        <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <Link
-            href="/events"
-            className="inline-flex items-center gap-2 text-sm font-semibold text-stone-500 transition hover:text-[#EA580C]"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Back to all events
-          </Link>
-
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <Link
-              href={`/events/${eventId}/badge`}
-              className="inline-flex items-center justify-center gap-2 rounded-xl border border-orange-200 bg-white px-5 py-3 text-sm font-semibold text-[#EA580C] transition hover:bg-orange-50"
-            >
-              Configure Badge
-              <Settings2 className="h-4 w-4" />
-            </Link>
-
-            <Link
-              href={`/events/${eventId}/attendees`}
-              className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-600/20 transition hover:bg-[#c2410c]"
-            >
-              Continue to Attendees
-              <ArrowRight className="h-4 w-4" />
-            </Link>
-          </div>
+          Last updated{" "}
+          {formatDateTime(event.updatedAt)}
         </div>
       </section>
     </main>

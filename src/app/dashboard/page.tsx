@@ -143,7 +143,7 @@ export default async function DashboardPage() {
             </Link>
 
             {/* Navigation */}
-            <nav className="ml-4 hidden items-center gap-1 xl:flex">
+            <nav className="ml-85 hidden items-center gap-1 xl:flex">
               <HeaderLink
                 href="/dashboard"
                 icon={
@@ -167,16 +167,16 @@ export default async function DashboardPage() {
                 label="Attendees"
               />
 
-              <HeaderLink
+              {/* <HeaderLink
                 href="/events"
                 icon={
                   <BarChart3 className="h-4 w-4" />
                 }
                 label="Analytics"
                 badge="Soon"
-              />
+              /> */}
 
-              <HeaderLink
+              {/* <HeaderLink
                 href="/events"
                 icon={
                   <ClipboardList className="h-4 w-4" />
@@ -192,12 +192,12 @@ export default async function DashboardPage() {
                 }
                 label="Settings"
                 badge="Soon"
-              />
+              /> */}
             </nav>
 
             {/* Right side */}
             <div className="ml-auto flex items-center gap-2">
-              <Link
+              {/* <Link
                 href="/events/create"
                 className="group flex h-10 items-center gap-2 rounded-xl bg-[#EA580C] px-4 text-sm font-semibold text-white shadow-lg shadow-orange-500/20 transition hover:-translate-y-0.5 hover:bg-[#C2410C]"
               >
@@ -208,7 +208,7 @@ export default async function DashboardPage() {
                 </span>
 
                 <ArrowRight className="hidden h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5 sm:block" />
-              </Link>
+              </Link> */}
 
               {/* User */}
               <div className="hidden items-center gap-2 rounded-xl border border-[#241000]/10 bg-white px-2 py-1.5 md:flex">

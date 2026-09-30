@@ -19,6 +19,9 @@ import {
   FileSpreadsheet,
   Loader2,
   Mail,
+  Pencil,
+  Save,
+  Trash2,
   MapPin,
   Phone,
   Plus,
@@ -167,8 +170,29 @@ export default function AttendeesPage() {
   const [showAddModal, setShowAddModal] =
     useState(false);
 
+  const [showEditModal, setShowEditModal] =
+    useState(false);
+
+  const [editingAttendee, setEditingAttendee] =
+    useState<Attendee | null>(null);
+
   const [form, setForm] =
     useState<AttendeeForm>(initialForm);
+
+  const [editForm, setEditForm] =
+    useState<AttendeeForm>(initialForm);
+
+  const [editFormError, setEditFormError] =
+    useState("");
+
+  const [isEditing, setIsEditing] =
+    useState(false);
+
+  const [deleteTarget, setDeleteTarget] =
+    useState<Attendee | null>(null);
+
+  const [isDeleting, setIsDeleting] =
+    useState(false);
 
   async function loadEvent() {
     if (!eventId) {
@@ -311,6 +335,186 @@ export default function AttendeesPage() {
     }));
   }
 
+  function updateEditForm(
+    field: keyof AttendeeForm,
+    value: string,
+  ) {
+    setEditForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function openEditModal(attendee: Attendee) {
+    setEditingAttendee(attendee);
+    setEditForm({
+      name: attendee.name,
+      email: attendee.email,
+      phone: attendee.phone ?? "",
+      registrationNumber:
+        attendee.registrationNumber,
+      category: attendee.category ?? "",
+      qrValue: attendee.qrValue ?? "",
+    });
+    setEditFormError("");
+    setShowEditModal(true);
+  }
+
+  function closeEditModal() {
+    if (isEditing) return;
+    setShowEditModal(false);
+    setEditingAttendee(null);
+    setEditForm(initialForm);
+    setEditFormError("");
+  }
+
+  async function handleEditAttendee(
+    submitEvent: FormEvent<HTMLFormElement>,
+  ) {
+    submitEvent.preventDefault();
+
+    if (!editingAttendee) return;
+
+    setEditFormError("");
+
+    if (!editForm.name.trim()) {
+      setEditFormError(
+        "Attendee name is required.",
+      );
+      return;
+    }
+
+    if (!editForm.email.trim()) {
+      setEditFormError("Email is required.");
+      return;
+    }
+
+    if (!editForm.registrationNumber.trim()) {
+      setEditFormError(
+        "Registration number cannot be empty.",
+      );
+      return;
+    }
+
+    try {
+      setIsEditing(true);
+
+      const response = await fetch(
+        `/api/events/${eventId}/attendees`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            action: "update",
+            attendeeId: editingAttendee._id,
+            name: editForm.name.trim(),
+            email: editForm.email.trim(),
+            phone: editForm.phone.trim(),
+            registrationNumber:
+              editForm.registrationNumber.trim(),
+            category: editForm.category.trim(),
+            qrValue: editForm.qrValue.trim(),
+          }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            "Failed to update attendee.",
+        );
+      }
+
+      setShowEditModal(false);
+      setEditingAttendee(null);
+      setEditForm(initialForm);
+      setEditFormError("");
+
+      await loadAttendees(
+        pagination.page,
+        search,
+      );
+      await loadEvent();
+    } catch (error) {
+      console.error(error);
+      setEditFormError(
+        error instanceof Error
+          ? error.message
+          : "Failed to update attendee.",
+      );
+    } finally {
+      setIsEditing(false);
+    }
+  }
+
+  function openDeleteConfirmation(attendee: Attendee) {
+    if (isDeleting) return;
+    setDeleteTarget(attendee);
+  }
+
+  function closeDeleteConfirmation() {
+    if (isDeleting) return;
+    setDeleteTarget(null);
+  }
+
+  async function handleDeleteAttendee() {
+    if (!deleteTarget || !eventId) return;
+
+    try {
+      setIsDeleting(true);
+      setError("");
+
+      const response = await fetch(
+        `/api/events/${eventId}/attendees`,
+        {
+          method: "DELETE",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            attendeeId: deleteTarget._id,
+          }),
+        },
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.message ||
+            "Failed to delete attendee.",
+        );
+      }
+
+      const nextPage =
+        pagination.page > 1 &&
+        attendees.length === 1
+          ? pagination.page - 1
+          : pagination.page;
+
+      setDeleteTarget(null);
+
+      await loadAttendees(
+        nextPage,
+        search,
+      );
+      await loadEvent();
+    } catch (error) {
+      console.error(error);
+      setError(
+        error instanceof Error
+          ? error.message
+          : "Failed to delete attendee.",
+      );
+    } finally {
+      setIsDeleting(false);
+    }
+  }
+
   async function handleAddAttendee(
     submitEvent: FormEvent<HTMLFormElement>,
   ) {
@@ -334,16 +538,14 @@ export default function AttendeesPage() {
       return;
     }
 
-    if (
-      !form.registrationNumber.trim()
-    ) {
-      setFormError(
-        "Registration number is required.",
-      );
-
-      return;
-    }
-
+    /*
+     * Registration number is intentionally
+     * NOT validated here.
+     *
+     * If it is empty, the backend will
+     * automatically generate one using
+     * the event code.
+     */
     try {
       setIsSubmitting(true);
 
@@ -381,6 +583,7 @@ export default function AttendeesPage() {
       }
 
       setForm(initialForm);
+      setFormError("");
       setShowAddModal(false);
 
       await loadAttendees(
@@ -675,11 +878,15 @@ export default function AttendeesPage() {
                 <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
                   <button
                     type="button"
-                    onClick={() =>
+                    onClick={() => {
+                      setForm(
+                        initialForm,
+                      );
+                      setFormError("");
                       setShowAddModal(
                         true,
-                      )
-                    }
+                      );
+                    }}
                     className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-3 text-sm font-semibold text-white shadow-lg shadow-orange-600/20 hover:bg-[#c2410c]"
                   >
                     <Plus className="h-4 w-4" />
@@ -724,6 +931,10 @@ export default function AttendeesPage() {
 
                       <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">
                         Added
+                      </th>
+
+                      <th className="px-6 py-4 text-right text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">
+                        Action
                       </th>
                     </tr>
                   </thead>
@@ -837,6 +1048,32 @@ export default function AttendeesPage() {
                               attendee.createdAt,
                             )}
                           </td>
+
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openEditModal(attendee)
+                                }
+                                className="inline-flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-bold text-[#EA580C] transition hover:bg-orange-100"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Edit
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  openDeleteConfirmation(attendee)
+                                }
+                                className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-600 transition hover:bg-red-100"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                                Delete
+                              </button>
+                            </div>
+                          </td>
                         </motion.tr>
                       ),
                     )}
@@ -896,15 +1133,39 @@ export default function AttendeesPage() {
                           </div>
                         </div>
 
-                        <span
-                          className={`shrink-0 rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase ${badgeStatusClasses(
-                            attendee.badgeGenerated,
-                          )}`}
-                        >
-                          {attendee.badgeGenerated
-                            ? "Generated"
-                            : "Pending"}
-                        </span>
+                        <div className="flex shrink-0 items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openEditModal(attendee)
+                            }
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-orange-200 bg-orange-50 text-[#EA580C] transition hover:bg-orange-100"
+                            aria-label={`Edit ${attendee.name}`}
+                          >
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openDeleteConfirmation(attendee)
+                            }
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-red-200 bg-red-50 text-red-600 transition hover:bg-red-100"
+                            aria-label={`Delete ${attendee.name}`}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+
+                          <span
+                            className={`rounded-full border px-2.5 py-1 text-[9px] font-bold uppercase ${badgeStatusClasses(
+                              attendee.badgeGenerated,
+                            )}`}
+                          >
+                            {attendee.badgeGenerated
+                              ? "Generated"
+                              : "Pending"}
+                          </span>
+                        </div>
                       </div>
 
                       <div className="mt-4 grid grid-cols-2 gap-3">
@@ -1057,7 +1318,7 @@ export default function AttendeesPage() {
                   </h2>
 
                   <p className="text-xs text-stone-400">
-                    Add a registration to this event.
+                    Registration number can be entered manually or generated automatically.
                   </p>
                 </div>
               </div>
@@ -1169,8 +1430,8 @@ export default function AttendeesPage() {
                     className="mb-2 block text-sm font-semibold"
                   >
                     Registration number
-                    <span className="ml-1 text-[#EA580C]">
-                      *
+                    <span className="ml-1 text-xs font-medium text-stone-400">
+                      Optional
                     </span>
                   </label>
 
@@ -1186,11 +1447,14 @@ export default function AttendeesPage() {
                         event.target.value,
                       )
                     }
-                    placeholder="e.g. ACVS-001"
-                    required
+                    placeholder={`Leave blank for ${event?.code || "EVENT"}-001`}
                     maxLength={100}
                     className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm uppercase outline-none transition placeholder:normal-case placeholder:text-stone-400 focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
                   />
+
+                  <p className="mt-2 text-xs leading-5 text-stone-400">
+                    Leave this blank and BadgeFlow will automatically generate a unique registration number using the event code.
+                  </p>
                 </div>
 
                 <div>
@@ -1250,8 +1514,7 @@ export default function AttendeesPage() {
                 </div>
 
                 <p className="mt-2 text-xs text-stone-400">
-                  This value will later be encoded into
-                  the attendee&apos;s QR badge.
+                  Leave blank to automatically use the final registration number as the QR value.
                 </p>
               </div>
 
@@ -1298,6 +1561,333 @@ export default function AttendeesPage() {
           </motion.div>
         </div>
       )}
+
+      {showEditModal && editingAttendee && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#241000]/40 p-4 backdrop-blur-sm">
+          <motion.div
+            initial={{
+              opacity: 0,
+              scale: 0.96,
+              y: 10,
+            }}
+            animate={{
+              opacity: 1,
+              scale: 1,
+              y: 0,
+            }}
+            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-stone-200 bg-white shadow-2xl"
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-stone-100 bg-white/95 px-6 py-5 backdrop-blur-xl sm:px-8">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-orange-50 text-[#EA580C]">
+                  <Pencil className="h-5 w-5" />
+                </div>
+
+                <div>
+                  <h2 className="text-lg font-bold">
+                    Edit Attendee
+                  </h2>
+                  <p className="text-xs text-stone-400">
+                    Update attendee details without changing the event.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={closeEditModal}
+                disabled={isEditing}
+                className="flex h-9 w-9 items-center justify-center rounded-lg text-stone-400 transition hover:bg-stone-100 hover:text-stone-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleEditAttendee}
+              className="space-y-5 p-6 sm:p-8"
+            >
+              <div className="rounded-2xl border border-orange-100 bg-orange-50/60 p-4">
+                <p className="text-xs font-bold uppercase tracking-[0.12em] text-[#EA580C]">
+                  Current attendee
+                </p>
+                <div className="mt-2 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="text-sm font-semibold text-[#241000]">
+                    {editingAttendee.name}
+                  </p>
+                  <p className="text-xs font-bold text-stone-500">
+                    {editingAttendee.registrationNumber}
+                  </p>
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-attendee-name"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Full name
+                  <span className="ml-1 text-[#EA580C]">*</span>
+                </label>
+                <input
+                  id="edit-attendee-name"
+                  type="text"
+                  value={editForm.name}
+                  onChange={(event) =>
+                    updateEditForm(
+                      "name",
+                      event.target.value,
+                    )
+                  }
+                  required
+                  maxLength={150}
+                  className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm outline-none transition focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+                />
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="edit-attendee-email"
+                    className="mb-2 block text-sm font-semibold"
+                  >
+                    Email
+                    <span className="ml-1 text-[#EA580C]">*</span>
+                  </label>
+                  <input
+                    id="edit-attendee-email"
+                    type="email"
+                    value={editForm.email}
+                    onChange={(event) =>
+                      updateEditForm(
+                        "email",
+                        event.target.value,
+                      )
+                    }
+                    required
+                    className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm outline-none transition focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+                  />
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-attendee-phone"
+                    className="mb-2 block text-sm font-semibold"
+                  >
+                    Phone
+                  </label>
+                  <input
+                    id="edit-attendee-phone"
+                    type="tel"
+                    value={editForm.phone}
+                    onChange={(event) =>
+                      updateEditForm(
+                        "phone",
+                        event.target.value,
+                      )
+                    }
+                    className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm outline-none transition focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+                  />
+                </div>
+              </div>
+
+              <div className="grid gap-5 sm:grid-cols-2">
+                <div>
+                  <label
+                    htmlFor="edit-registration-number"
+                    className="mb-2 block text-sm font-semibold"
+                  >
+                    Registration number
+                  </label>
+                  <input
+                    id="edit-registration-number"
+                    type="text"
+                    value={editForm.registrationNumber}
+                    onChange={(event) =>
+                      updateEditForm(
+                        "registrationNumber",
+                        event.target.value,
+                      )
+                    }
+                    required
+                    maxLength={100}
+                    className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm uppercase outline-none transition focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+                  />
+                  <p className="mt-2 text-xs text-stone-400">
+                    Must be unique within this event.
+                  </p>
+                </div>
+
+                <div>
+                  <label
+                    htmlFor="edit-attendee-category"
+                    className="mb-2 block text-sm font-semibold"
+                  >
+                    Category
+                  </label>
+                  <input
+                    id="edit-attendee-category"
+                    type="text"
+                    value={editForm.category}
+                    onChange={(event) =>
+                      updateEditForm(
+                        "category",
+                        event.target.value,
+                      )
+                    }
+                    maxLength={100}
+                    className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm outline-none transition focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-qr-value"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  QR value
+                </label>
+                <div className="relative">
+                  <QrCode className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#EA580C]" />
+                  <input
+                    id="edit-qr-value"
+                    type="text"
+                    value={editForm.qrValue}
+                    onChange={(event) =>
+                      updateEditForm(
+                        "qrValue",
+                        event.target.value,
+                      )
+                    }
+                    maxLength={500}
+                    className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 pl-10 pr-4 text-sm outline-none transition focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+                  />
+                </div>
+                <p className="mt-2 text-xs text-stone-400">
+                  You can keep a custom QR value or change it manually.
+                </p>
+              </div>
+
+              {editFormError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
+                  {editFormError}
+                </div>
+              )}
+
+              <div className="flex flex-col-reverse gap-3 border-t border-stone-100 pt-5 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeEditModal}
+                  disabled={isEditing}
+                  className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-200 bg-white px-5 text-sm font-semibold text-stone-600 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={isEditing}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-6 text-sm font-semibold text-white shadow-lg shadow-orange-600/20 transition hover:bg-[#c2410c] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isEditing ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="h-4 w-4" />
+                      Save Changes
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-[#241000]/45 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="delete-attendee-title"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.96, y: 10 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            className="w-full max-w-md overflow-hidden rounded-3xl border border-red-100 bg-white shadow-2xl"
+          >
+            <div className="p-6 sm:p-7">
+              <div className="flex items-start gap-4">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+                  <Trash2 className="h-5 w-5" />
+                </div>
+
+                <div className="min-w-0">
+                  <h2
+                    id="delete-attendee-title"
+                    className="text-lg font-bold text-[#241000]"
+                  >
+                    Delete attendee?
+                  </h2>
+
+                  <p className="mt-1 text-sm leading-6 text-stone-500">
+                    This will permanently remove this attendee from the event. This action cannot be undone.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-5 rounded-2xl border border-stone-100 bg-stone-50 p-4">
+                <p className="truncate text-sm font-bold text-[#241000]">
+                  {deleteTarget.name}
+                </p>
+                <p className="mt-1 text-xs font-semibold text-[#EA580C]">
+                  {deleteTarget.registrationNumber}
+                </p>
+                {deleteTarget.email && (
+                  <p className="mt-1 truncate text-xs text-stone-400">
+                    {deleteTarget.email}
+                  </p>
+                )}
+              </div>
+
+              <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={closeDeleteConfirmation}
+                  disabled={isDeleting}
+                  className="inline-flex h-11 items-center justify-center rounded-xl border border-stone-200 bg-white px-5 text-sm font-semibold text-stone-600 transition hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleDeleteAttendee}
+                  disabled={isDeleting}
+                  className="inline-flex h-11 items-center justify-center gap-2 rounded-xl bg-red-600 px-5 text-sm font-semibold text-white shadow-lg shadow-red-600/20 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isDeleting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Deleting...
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="h-4 w-4" />
+                      Delete Attendee
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      )}
+
     </main>
   );
 }

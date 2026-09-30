@@ -25,6 +25,19 @@ export interface IEvent {
   attendeeCount: number;
   badgeCount: number;
 
+  /**
+   * Stores the last automatically generated
+   * registration number sequence for this event.
+   *
+   * Example:
+   * Event code: ACVS26
+   * registrationSequence: 3
+   *
+   * Next generated number:
+   * ACVS26-004
+   */
+  registrationSequence: number;
+
   createdBy: mongoose.Types.ObjectId;
 
   createdAt: Date;
@@ -100,6 +113,24 @@ const EventSchema = new Schema<IEvent>(
     },
 
     badgeCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    /**
+     * Counter used for automatic attendee
+     * registration-number generation.
+     *
+     * Example:
+     *
+     * registrationSequence: 1
+     * → ACVS26-001
+     *
+     * registrationSequence: 2
+     * → ACVS26-002
+     */
+    registrationSequence: {
       type: Number,
       default: 0,
       min: 0,
