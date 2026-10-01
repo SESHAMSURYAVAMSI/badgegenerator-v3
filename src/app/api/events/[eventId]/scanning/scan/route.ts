@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 
+import { auth } from "@/auth";
+
 import { connectDB } from "@/lib/mongodb";
 import Event from "@/models/Event";
 import Attendee from "@/models/Attendee";
 import ScanConfig from "@/models/ScanConfig";
 import ScanRecord from "@/models/ScanRecord";
+import ScanAttempt from "@/models/ScanAttempt";
 
 interface RouteContext {
   params: Promise<{
@@ -13,16 +16,10 @@ interface RouteContext {
 }
 
 interface ScanRequestBody {
-  qrValue?: string;
   dayId?: string;
   itemId?: string;
-}
-
-function normalizeValue(
-  value: unknown,
-): string {
-  return String(value ?? "")
-    .trim();
+  qrValue?: string;
+  registrationNumber?: string;
 }
 
 export async function POST(
@@ -30,91 +27,74 @@ export async function POST(
   context: RouteContext,
 ) {
   try {
-    const { eventId } = await context.params;
+    const session = await auth();
 
-    if (!eventId) {
+    if (!session?.user?.id) {
       return NextResponse.json(
         {
           success: false,
-          message: "Event ID is required",
+          duplicate: false,
+          message: "Unauthorized.",
         },
         {
-          status: 400,
-        },
-      );
-    }
-
-    const body =
-      (await request.json()) as ScanRequestBody;
-
-    const qrValue = normalizeValue(
-      body.qrValue,
-    );
-
-    const dayId = normalizeValue(
-      body.dayId,
-    );
-
-    const itemId = normalizeValue(
-      body.itemId,
-    );
-
-    if (!qrValue) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: "QR_VALUE_REQUIRED",
-          message:
-            "QR code value is required",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
-
-    if (!dayId) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: "DAY_REQUIRED",
-          message:
-            "Scanning day is required",
-        },
-        {
-          status: 400,
-        },
-      );
-    }
-
-    if (!itemId) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: "ITEM_REQUIRED",
-          message:
-            "Scanning module is required",
-        },
-        {
-          status: 400,
+          status: 401,
         },
       );
     }
 
     await connectDB();
 
+    const { eventId } = await context.params;
+
+    const body =
+      (await request.json()) as ScanRequestBody;
+
+    const dayId = String(
+      body.dayId ?? "",
+    ).trim();
+
+    const itemId = String(
+      body.itemId ?? "",
+    ).trim();
+
+    const qrValue = String(
+      body.qrValue ?? "",
+    ).trim();
+
+    const registrationNumber = String(
+      body.registrationNumber ?? "",
+    )
+      .trim()
+      .toUpperCase();
+
     /*
-     * Validate event.
+     * --------------------------------------------------
+     * FIND EVENT
+     * --------------------------------------------------
      */
-    const event =
-      await Event.findById(eventId).lean();
+
+    const event = await Event.findOne({
+      _id: eventId,
+      createdBy: session.user.id,
+    }).lean();
 
     if (!event) {
       return NextResponse.json(
         {
           success: false,
-          code: "EVENT_NOT_FOUND",
-          message: "Event not found",
+          duplicate: false,
+          message: "Event not found or access denied.",
+        },
+        {
+          status: 404,
+        },
+      );
+
+      return NextResponse.json(
+        {
+          success: false,
+          duplicate: false,
+          message: "Event not found.",
         },
         {
           status: 404,
@@ -123,8 +103,11 @@ export async function POST(
     }
 
     /*
-     * Load scanning configuration.
+     * --------------------------------------------------
+     * FIND SCANNING CONFIG
+     * --------------------------------------------------
      */
+
     const config =
       await ScanConfig.findOne({
         eventId: event._id,
@@ -134,45 +117,43 @@ export async function POST(
       return NextResponse.json(
         {
           success: false,
-          code: "SCAN_CONFIG_NOT_FOUND",
+          duplicate: false,
           message:
-            "Scanning configuration has not been created for this event",
+            "Scanning configuration is not available.",
         },
         {
-          status: 404,
+          status: 400,
         },
       );
     }
 
     /*
-     * Find selected day.
+     * --------------------------------------------------
+     * VALIDATE DAY
+     * --------------------------------------------------
      */
+
     const day = config.days.find(
-      (configuredDay) =>
-        configuredDay.id === dayId,
+      (currentDay) =>
+        currentDay.id === dayId &&
+        currentDay.enabled,
     );
 
     if (!day) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: "DAY_NOT_FOUND",
-          message:
-            "Selected scanning day was not found",
-        },
-        {
-          status: 404,
-        },
-      );
-    }
+      await ScanAttempt.create({
+        eventId: event._id,
+        dayId,
+        status: "invalid_day",
+        source: "admin",
+        qrValue,
+      });
 
-    if (!day.enabled) {
       return NextResponse.json(
         {
           success: false,
-          code: "DAY_DISABLED",
+          duplicate: false,
           message:
-            "This scanning day is currently disabled",
+            "Selected day is not valid.",
         },
         {
           status: 400,
@@ -181,34 +162,34 @@ export async function POST(
     }
 
     /*
-     * Find selected scanning module.
+     * --------------------------------------------------
+     * VALIDATE ITEM
+     * --------------------------------------------------
      */
+
     const item = day.items.find(
-      (configuredItem) =>
-        configuredItem.id === itemId,
+      (currentItem) =>
+        currentItem.id === itemId &&
+        currentItem.enabled,
     );
 
     if (!item) {
-      return NextResponse.json(
-        {
-          success: false,
-          code: "ITEM_NOT_FOUND",
-          message:
-            "Selected scanning module was not found",
-        },
-        {
-          status: 404,
-        },
-      );
-    }
+      await ScanAttempt.create({
+        eventId: event._id,
+        dayId: day.id,
+        dayName: day.name,
+        itemId,
+        status: "invalid_item",
+        source: "admin",
+        qrValue,
+      });
 
-    if (!item.enabled) {
       return NextResponse.json(
         {
           success: false,
-          code: "ITEM_DISABLED",
+          duplicate: false,
           message:
-            "This scanning module is currently disabled",
+            "Selected scanning module is not valid.",
         },
         {
           status: 400,
@@ -217,35 +198,94 @@ export async function POST(
     }
 
     /*
-     * Resolve attendee.
-     *
-     * The QR may contain:
-     * 1. registrationNumber
-     * 2. qrValue
-     *
-     * Both are supported.
+     * --------------------------------------------------
+     * VALIDATE QR
+     * --------------------------------------------------
      */
-    const attendee =
-      await Attendee.findOne({
-        eventId: event._id,
-        $or: [
-          {
-            registrationNumber:
-              qrValue.toUpperCase(),
-          },
-          {
-            qrValue,
-          },
-        ],
-      }).lean();
 
-    if (!attendee) {
+    if (!qrValue && !registrationNumber) {
+      await ScanAttempt.create({
+        eventId: event._id,
+        dayId: day.id,
+        dayName: day.name,
+        itemId: item.id,
+        itemName: item.name,
+        status: "invalid_qr",
+        source: "admin",
+      });
+
       return NextResponse.json(
         {
           success: false,
-          code: "ATTENDEE_NOT_FOUND",
+          duplicate: false,
           message:
-            "This QR code does not belong to an attendee of this event",
+            "No QR value was provided.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /*
+     * --------------------------------------------------
+     * FIND ATTENDEE
+     * --------------------------------------------------
+     */
+
+    const attendeeQuery: {
+      eventId: typeof event._id;
+      $or: Array<
+        | { qrValue: string }
+        | { registrationNumber: string }
+      >;
+    } = {
+      eventId: event._id,
+      $or: [],
+    };
+
+    if (qrValue) {
+      attendeeQuery.$or.push({
+        qrValue,
+      });
+    }
+
+    if (registrationNumber) {
+      attendeeQuery.$or.push({
+        registrationNumber,
+      });
+    }
+
+    const attendee =
+      await Attendee.findOne(
+        attendeeQuery,
+      );
+
+    /*
+     * --------------------------------------------------
+     * INVALID ATTENDEE
+     * --------------------------------------------------
+     */
+
+    if (!attendee) {
+      await ScanAttempt.create({
+        eventId: event._id,
+        dayId: day.id,
+        dayName: day.name,
+        itemId: item.id,
+        itemName: item.name,
+        qrValue,
+        registrationNumber,
+        status: "invalid_qr",
+        source: "admin",
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          duplicate: false,
+          message:
+            "Invalid QR code. Attendee not found for this event.",
         },
         {
           status: 404,
@@ -254,84 +294,54 @@ export async function POST(
     }
 
     /*
-     * Check duplicate scan.
+     * --------------------------------------------------
+     * CHECK EXISTING SCAN
+     * --------------------------------------------------
      *
-     * Same attendee + same event + same day
-     * + same item cannot be scanned twice.
+     * One attendee can only be scanned once
+     * for:
+     *
+     * Event + Day + Module
+     *
+     * If already scanned, return the ORIGINAL
+     * scan timestamp.
      */
+
     const existingScan =
       await ScanRecord.findOne({
         eventId: event._id,
         attendeeId: attendee._id,
-        dayId,
-        itemId,
+        dayId: day.id,
+        itemId: item.id,
       }).lean();
 
     if (existingScan) {
+      await ScanAttempt.create({
+        eventId: event._id,
+        attendeeId: attendee._id,
+        dayId: day.id,
+        dayName: day.name,
+        itemId: item.id,
+        itemName: item.name,
+        registrationNumber:
+          attendee.registrationNumber,
+        attendeeName: attendee.name,
+        qrValue:
+          qrValue || attendee.qrValue,
+        status: "duplicate",
+        source: "admin",
+      });
+
       return NextResponse.json(
         {
           success: false,
           duplicate: true,
           code: "ALREADY_SCANNED",
           message:
-            `${attendee.name} has already collected ${item.name} for ${day.name}.`,
+            "This attendee has already been scanned for this module.",
           data: {
-            attendee: {
-              id: attendee._id.toString(),
-              name: attendee.name,
-              email: attendee.email,
-              registrationNumber:
-                attendee.registrationNumber,
-              category: attendee.category,
-            },
-            day: {
-              id: day.id,
-              name: day.name,
-            },
-            item: {
-              id: item.id,
-              name: item.name,
-            },
-            scannedAt:
-              existingScan.scannedAt,
-          },
-        },
-        {
-          status: 409,
-        },
-      );
-    }
-
-    /*
-     * Create scan record.
-     *
-     * The unique compound index in ScanRecord
-     * protects against race-condition duplicates.
-     */
-    try {
-      const scan =
-        await ScanRecord.create({
-          eventId: event._id,
-          attendeeId: attendee._id,
-          dayId: day.id,
-          dayName: day.name,
-          itemId: item.id,
-          itemName: item.name,
-          registrationNumber:
-            attendee.registrationNumber,
-          attendeeName: attendee.name,
-          scannedAt: new Date(),
-        });
-
-      return NextResponse.json(
-        {
-          success: true,
-          duplicate: false,
-          code: "SCAN_SUCCESS",
-          message:
-            `${attendee.name} successfully received ${item.name}.`,
-          data: {
-            scanId: scan._id.toString(),
+            scanId:
+              existingScan._id.toString(),
 
             attendee: {
               id: attendee._id.toString(),
@@ -339,7 +349,8 @@ export async function POST(
               email: attendee.email,
               registrationNumber:
                 attendee.registrationNumber,
-              category: attendee.category,
+              category:
+                attendee.category,
             },
 
             event: {
@@ -358,34 +369,157 @@ export async function POST(
             },
 
             scannedAt:
-              scan.scannedAt,
+              existingScan.scannedAt.toISOString(),
           },
         },
         {
-          status: 201,
+          status: 200,
+        },
+      );
+    }
+
+    /*
+     * --------------------------------------------------
+     * CREATE SUCCESSFUL SCAN
+     * --------------------------------------------------
+     */
+
+    const scannedAt = new Date();
+
+    try {
+      const createdScan =
+        await ScanRecord.create({
+          eventId: event._id,
+          attendeeId: attendee._id,
+          dayId: day.id,
+          dayName: day.name,
+          itemId: item.id,
+          itemName: item.name,
+          registrationNumber:
+            attendee.registrationNumber,
+          attendeeName: attendee.name,
+          scannedAt,
+        });
+
+      /*
+       * ------------------------------------------------
+       * RECORD SUCCESS ATTEMPT
+       * ------------------------------------------------
+       */
+
+      await ScanAttempt.create({
+        eventId: event._id,
+        attendeeId: attendee._id,
+        dayId: day.id,
+        dayName: day.name,
+        itemId: item.id,
+        itemName: item.name,
+        registrationNumber:
+          attendee.registrationNumber,
+        attendeeName: attendee.name,
+        qrValue:
+          qrValue || attendee.qrValue,
+        status: "success",
+        source: "admin",
+      });
+
+      /*
+       * ------------------------------------------------
+       * SUCCESS RESPONSE
+       * ------------------------------------------------
+       *
+       * Keep the response shape exactly the same
+       * for success and duplicate.
+       */
+
+      return NextResponse.json(
+        {
+          success: true,
+          duplicate: false,
+          code: "SCAN_SUCCESS",
+          message: "Scan successful.",
+          data: {
+            scanId:
+              createdScan._id.toString(),
+
+            attendee: {
+              id: attendee._id.toString(),
+              name: attendee.name,
+              email: attendee.email,
+              registrationNumber:
+                attendee.registrationNumber,
+              category:
+                attendee.category,
+            },
+
+            event: {
+              id: event._id.toString(),
+              name: event.name,
+            },
+
+            day: {
+              id: day.id,
+              name: day.name,
+            },
+
+            item: {
+              id: item.id,
+              name: item.name,
+            },
+
+            scannedAt:
+              createdScan.scannedAt.toISOString(),
+          },
+        },
+        {
+          status: 200,
         },
       );
     } catch (error: unknown) {
       /*
-       * MongoDB duplicate-key protection.
+       * ------------------------------------------------
+       * HANDLE RACE CONDITION
+       * ------------------------------------------------
        *
-       * This can happen if two devices scan the
-       * same attendee at almost exactly the same time.
+       * Two scanners can scan the same attendee at
+       * almost exactly the same time.
+       *
+       * The unique MongoDB index protects the database.
+       *
+       * If MongoDB returns duplicate-key error 11000,
+       * fetch the original scan and return it as
+       * "Already Scanned".
        */
+
       if (
+        error &&
         typeof error === "object" &&
-        error !== null &&
         "code" in error &&
-        (error as { code?: number }).code ===
-          11000
+        error.code === 11000
       ) {
-        const duplicate =
+        const raceExistingScan =
           await ScanRecord.findOne({
             eventId: event._id,
             attendeeId: attendee._id,
-            dayId,
-            itemId,
+            dayId: day.id,
+            itemId: item.id,
           }).lean();
+
+        await ScanAttempt.create({
+          eventId: event._id,
+          attendeeId: attendee._id,
+          dayId: day.id,
+          dayName: day.name,
+          itemId: item.id,
+          itemName: item.name,
+          registrationNumber:
+            attendee.registrationNumber,
+          attendeeName: attendee.name,
+          qrValue:
+            qrValue || attendee.qrValue,
+          status: "duplicate",
+          source: "admin",
+        });
 
         return NextResponse.json(
           {
@@ -393,8 +527,11 @@ export async function POST(
             duplicate: true,
             code: "ALREADY_SCANNED",
             message:
-              `${attendee.name} has already been scanned for ${item.name}.`,
+              "This attendee has already been scanned for this module.",
             data: {
+              scanId:
+                raceExistingScan?._id?.toString(),
+
               attendee: {
                 id: attendee._id.toString(),
                 name: attendee.name,
@@ -404,21 +541,30 @@ export async function POST(
                 category:
                   attendee.category,
               },
+
+              event: {
+                id: event._id.toString(),
+                name: event.name,
+              },
+
               day: {
                 id: day.id,
                 name: day.name,
               },
+
               item: {
                 id: item.id,
                 name: item.name,
               },
+
               scannedAt:
-                duplicate?.scannedAt ??
-                new Date(),
+                raceExistingScan?.scannedAt
+                  ? raceExistingScan.scannedAt.toISOString()
+                  : undefined,
             },
           },
           {
-            status: 409,
+            status: 200,
           },
         );
       }
@@ -427,16 +573,16 @@ export async function POST(
     }
   } catch (error) {
     console.error(
-      "POST scanning scan error:",
+      "Admin scanning error:",
       error,
     );
 
     return NextResponse.json(
       {
         success: false,
-        code: "SCAN_FAILED",
+        duplicate: false,
         message:
-          "Something went wrong while processing the scan",
+          "Unable to process the scan.",
       },
       {
         status: 500,
