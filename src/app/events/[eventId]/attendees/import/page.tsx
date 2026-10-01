@@ -24,6 +24,7 @@ interface ImportRow {
   name: string;
   email: string;
   phone: string;
+  medicalCouncilNumber: string;
   registrationNumber: string;
   category: string;
   qrValue: string;
@@ -55,6 +56,7 @@ const expectedColumns = [
   "Name",
   "Email",
   "Phone",
+  "Medical Council Number",
   "Registration Number",
   "Category",
   "QR Value",
@@ -144,6 +146,16 @@ function convertWorksheetRows(
       "contact",
     ]),
 
+    medicalCouncilNumber:
+      getColumnValue(row, [
+        "medical council number",
+        "medical council no",
+        "medical council no.",
+        "council number",
+        "mci number",
+        "nmc number",
+      ]),
+
     registrationNumber:
       getColumnValue(row, [
         "registration number",
@@ -176,6 +188,7 @@ function downloadTemplate() {
       Name: "Rahul Sharma",
       Email: "rahul@example.com",
       Phone: "9876543210",
+      "Medical Council Number": "TS-MCI-12345",
       "Registration Number": "REG-001",
       Category: "Delegate",
       "QR Value": "REG-001",
@@ -184,6 +197,7 @@ function downloadTemplate() {
       Name: "Priya Reddy",
       Email: "priya@example.com",
       Phone: "9876543211",
+      "Medical Council Number": "TS-MCI-12346",
       "Registration Number": "REG-002",
       Category: "Speaker",
       "QR Value": "REG-002",
@@ -192,6 +206,7 @@ function downloadTemplate() {
       Name: "Arjun Kumar",
       Email: "arjun@example.com",
       Phone: "9876543212",
+      "Medical Council Number": "",
       "Registration Number": "",
       Category: "VIP",
       "QR Value": "",

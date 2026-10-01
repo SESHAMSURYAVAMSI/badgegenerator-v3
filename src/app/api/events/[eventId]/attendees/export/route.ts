@@ -19,6 +19,7 @@ interface AttendeeExportData {
   name: string;
   email: string;
   phone: string;
+  medicalCouncilNumber: string;
   registrationNumber: string;
   category: string;
   qrValue: string;
@@ -194,6 +195,11 @@ export async function GET(
               attendeeWithPhone.phone ??
               "",
 
+            medicalCouncilNumber:
+              (attendee as typeof attendee & {
+                medicalCouncilNumber?: string;
+              }).medicalCouncilNumber ?? "",
+
             registrationNumber:
               attendee.registrationNumber ??
               "",
@@ -283,6 +289,11 @@ export async function GET(
         header: "Phone",
         key: "phone",
         width: 18,
+      },
+      {
+        header: "Medical Council Number",
+        key: "medicalCouncilNumber",
+        width: 26,
       },
       {
         header:
@@ -404,6 +415,8 @@ export async function GET(
           name: attendee.name,
           email: attendee.email,
           phone: attendee.phone,
+          medicalCouncilNumber:
+            attendee.medicalCouncilNumber,
           registrationNumber:
             attendee.registrationNumber,
           category:

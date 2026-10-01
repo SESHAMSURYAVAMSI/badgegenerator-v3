@@ -683,6 +683,13 @@ export default function BadgeGenerator({
                 <p className="mt-1 text-sm text-stone-500">
                   {selectedAttendee.registrationNumber}
                 </p>
+
+                {selectedAttendee.medicalCouncilNumber && (
+                  <p className="mt-1 text-xs font-semibold text-orange-700">
+                    Medical Council No:{" "}
+                    {selectedAttendee.medicalCouncilNumber}
+                  </p>
+                )}
               </div>
 
               <div className="flex items-center gap-2">

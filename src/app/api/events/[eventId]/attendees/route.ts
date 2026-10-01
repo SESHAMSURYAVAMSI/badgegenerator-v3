@@ -257,6 +257,9 @@ export async function GET(
         {
           qrValue: regex,
         },
+        {
+          medicalCouncilNumber: regex,
+        },
       ];
     }
 
@@ -370,6 +373,10 @@ export async function POST(
     const phone = String(
       body.phone ?? "",
     ).trim();
+
+    const medicalCouncilNumber = String(
+      body.medicalCouncilNumber ?? "",
+    ).trim().toUpperCase();
 
     const category = String(
       body.category ?? "",
@@ -497,6 +504,7 @@ export async function POST(
           name,
           email,
           phone,
+          medicalCouncilNumber,
 
           registrationNumber,
 
@@ -547,6 +555,7 @@ export async function POST(
               name,
               email,
               phone,
+              medicalCouncilNumber,
 
               registrationNumber:
                 retryNumber,
@@ -734,6 +743,7 @@ export async function PATCH(
      * - name
      * - email
      * - phone
+     * - medicalCouncilNumber
      * - registrationNumber
      * - category
      * - qrValue
@@ -756,6 +766,10 @@ export async function PATCH(
       const phone = String(
         body.phone ?? "",
       ).trim();
+
+      const medicalCouncilNumber = String(
+        body.medicalCouncilNumber ?? "",
+      ).trim().toUpperCase();
 
       const registrationNumber =
         normalizeRegistrationNumber(
@@ -860,6 +874,19 @@ export async function PATCH(
         );
       }
 
+      if (medicalCouncilNumber.length > 100) {
+        return NextResponse.json(
+          {
+            success: false,
+            message:
+              "Medical Council Number cannot exceed 100 characters.",
+          },
+          {
+            status: 400,
+          },
+        );
+      }
+
       if (registrationNumber.length > 100) {
         return NextResponse.json(
           {
@@ -939,6 +966,8 @@ export async function PATCH(
       attendee.name = name;
       attendee.email = email;
       attendee.phone = phone;
+      attendee.medicalCouncilNumber =
+        medicalCouncilNumber;
       attendee.registrationNumber =
         registrationNumber;
       attendee.category = category;
@@ -1191,4 +1220,3 @@ export async function DELETE(
     );
   }
 }
-

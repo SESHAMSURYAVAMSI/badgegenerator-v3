@@ -15,6 +15,7 @@ import {
   ChevronRight,
   Coffee,
   Loader2,
+  MapPin,
   Package,
   RefreshCw,
   ScanLine,
@@ -61,41 +62,39 @@ interface ScanConfigResponse {
   message?: string;
 }
 
-interface ScanResponseData {
-  scanId?: string;
-
-  attendee?: {
-    id: string;
-    name: string;
-    email: string;
-    registrationNumber: string;
-    category?: string;
-  };
-
-  event?: {
-    id: string;
-    name: string;
-  };
-
-  day?: {
-    id: string;
-    name: string;
-  };
-
-  item?: {
-    id: string;
-    name: string;
-  };
-
-  scannedAt?: string;
-}
-
 interface ScanResponse {
   success: boolean;
   duplicate?: boolean;
   code?: string;
   message?: string;
-  data?: ScanResponseData;
+  data?: {
+    scanId?: string;
+
+    attendee?: {
+      id: string;
+      name: string;
+      email: string;
+      registrationNumber: string;
+      category?: string;
+    };
+
+    event?: {
+      id: string;
+      name: string;
+    };
+
+    day?: {
+      id: string;
+      name: string;
+    };
+
+    item?: {
+      id: string;
+      name: string;
+    };
+
+    scannedAt?: string;
+  };
 }
 
 interface BarcodeDetectorResult {
@@ -125,6 +124,7 @@ declare global {
 }
 
 type ScanStep =
+  | "event"
   | "day"
   | "item"
   | "scanner";
@@ -135,7 +135,9 @@ interface Props {
   }>;
 }
 
-function getItemIcon(item: ScanItem) {
+function getItemIcon(
+  item: ScanItem,
+) {
   const iconName =
     item.icon?.toLowerCase();
 
@@ -164,7 +166,9 @@ function getItemIcon(item: ScanItem) {
   return Package;
 }
 
-function formatDate(value?: string) {
+function formatDate(
+  value?: string,
+) {
   if (!value) {
     return "";
   }
@@ -185,7 +189,9 @@ function formatDate(value?: string) {
   );
 }
 
-function formatScanTime(value?: string) {
+function formatScanTime(
+  value?: string,
+) {
   if (!value) {
     return "";
   }
@@ -204,27 +210,6 @@ function formatScanTime(value?: string) {
       second: "2-digit",
     },
   );
-}
-
-function formatScanDateTime(value?: string) {
-  if (!value) {
-    return "";
-  }
-
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "";
-  }
-
-  return date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "short",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
 }
 
 export default function PublicScanPage({
@@ -266,7 +251,7 @@ export default function PublicScanPage({
     useState<ScanItem | null>(null);
 
   const [step, setStep] =
-    useState<ScanStep>("day");
+    useState<ScanStep>("event");
 
   const [loading, setLoading] =
     useState(true);
@@ -283,13 +268,16 @@ export default function PublicScanPage({
   const [processingScan, setProcessingScan] =
     useState(false);
 
+  const processingScanRef =
+    useRef(false);
+
   const [successResult, setSuccessResult] =
-    useState<ScanResponseData | null>(
+    useState<ScanResponse["data"] | null>(
       null,
     );
 
   const [duplicateResult, setDuplicateResult] =
-    useState<ScanResponseData | null>(
+    useState<ScanResponse["data"] | null>(
       null,
     );
 
@@ -353,6 +341,13 @@ export default function PublicScanPage({
         setError("");
 
         try {
+          /*
+           * This endpoint is expected to return
+           * the public event.
+           *
+           * If your existing public event API uses
+           * another path, change only this URL.
+           */
           const eventResponse =
             await fetch(
               `/api/public/events/${encodeURIComponent(
@@ -363,6 +358,12 @@ export default function PublicScanPage({
               },
             );
 
+          if (!eventResponse.ok) {
+            throw new Error(
+              "Unable to load event",
+            );
+          }
+
           const eventJson =
             (await eventResponse.json()) as {
               success: boolean;
@@ -371,7 +372,6 @@ export default function PublicScanPage({
             };
 
           if (
-            !eventResponse.ok ||
             !eventJson.success ||
             !eventJson.data
           ) {
@@ -383,6 +383,17 @@ export default function PublicScanPage({
 
           setEvent(eventJson.data);
 
+          /*
+           * The public API gives us the event,
+           * while scanning configuration is loaded
+           * through the authenticated configuration
+           * endpoint.
+           *
+           * Because the public scanner must work
+           * without admin authentication, we load
+           * the public configuration using the
+           * publicId endpoint below.
+           */
           const configResponse =
             await fetch(
               `/api/public/events/${encodeURIComponent(
@@ -393,11 +404,16 @@ export default function PublicScanPage({
               },
             );
 
+          if (!configResponse.ok) {
+            throw new Error(
+              "Unable to load scanning configuration",
+            );
+          }
+
           const configJson =
             (await configResponse.json()) as ScanConfigResponse;
 
           if (
-            !configResponse.ok ||
             !configJson.success ||
             !configJson.data
           ) {
@@ -482,15 +498,21 @@ export default function PublicScanPage({
           return;
         }
 
-        if (processingScan) {
+        if (processingScanRef.current) {
           return;
         }
 
+        processingScanRef.current = true;
         setProcessingScan(true);
-
         setScanMessage("");
 
         try {
+          /*
+           * Public scan endpoint.
+           *
+           * This endpoint should resolve the event
+           * from publicId and then perform the scan.
+           */
           const response =
             await fetch(
               `/api/public/events/${encodeURIComponent(
@@ -503,7 +525,8 @@ export default function PublicScanPage({
                     "application/json",
                 },
                 body: JSON.stringify({
-                  qrValue: cleanValue,
+                  qrValue:
+                    cleanValue,
                   dayId:
                     selectedDay.id,
                   itemId:
@@ -515,34 +538,29 @@ export default function PublicScanPage({
           const result =
             (await response.json()) as ScanResponse;
 
-          /*
-           * ------------------------------------------
-           * SUCCESS
-           * ------------------------------------------
-           */
-
           if (
             result.success &&
             result.data
           ) {
-            scanningRef.current = false;
-
-            if (animationFrameRef.current !== null) {
-              cancelAnimationFrame(animationFrameRef.current);
-              animationFrameRef.current = null;
-            }
+            stopCamera();
 
             setSuccessResult(
               result.data,
             );
 
-            setDuplicateResult(null);
+            setDuplicateResult(
+              null,
+            );
 
             setScanMessage(
               result.message ||
-                "Scan successful.",
+                "Scan successful",
             );
 
+            /*
+             * Prevent immediately reading
+             * the same QR again.
+             */
             lastScannedValueRef.current =
               cleanValue;
 
@@ -551,33 +569,24 @@ export default function PublicScanPage({
 
             return;
           }
-
-          /*
-           * ------------------------------------------
-           * DUPLICATE
-           * ------------------------------------------
-           */
 
           if (
             result.duplicate &&
             result.data
           ) {
-            scanningRef.current = false;
-
-            if (animationFrameRef.current !== null) {
-              cancelAnimationFrame(animationFrameRef.current);
-              animationFrameRef.current = null;
-            }
+            stopCamera();
 
             setDuplicateResult(
-              result.data,
+              result.data ?? null,
             );
 
-            setSuccessResult(null);
+            setSuccessResult(
+              null,
+            );
 
             setScanMessage(
               result.message ||
-                "Already scanned.",
+                "Already scanned",
             );
 
             lastScannedValueRef.current =
@@ -589,19 +598,17 @@ export default function PublicScanPage({
             return;
           }
 
-          /*
-           * ------------------------------------------
-           * OTHER ERROR
-           * ------------------------------------------
-           */
+          setSuccessResult(
+            null,
+          );
 
-          setSuccessResult(null);
-
-          setDuplicateResult(null);
+          setDuplicateResult(
+            null,
+          );
 
           setScanMessage(
             result.message ||
-              "Unable to process scan.",
+              "Unable to process scan",
           );
         } catch (scanError) {
           console.error(
@@ -609,14 +616,11 @@ export default function PublicScanPage({
             scanError,
           );
 
-          setSuccessResult(null);
-
-          setDuplicateResult(null);
-
           setScanMessage(
             "Unable to connect to the scanning server.",
           );
         } finally {
+          processingScanRef.current = false;
           setProcessingScan(false);
         }
       },
@@ -624,7 +628,7 @@ export default function PublicScanPage({
         publicId,
         selectedDay,
         selectedItem,
-        processingScan,
+        stopCamera,
       ],
     );
 
@@ -634,10 +638,7 @@ export default function PublicScanPage({
 
       setCameraError("");
 
-      if (
-        !navigator.mediaDevices
-          ?.getUserMedia
-      ) {
+      if (!navigator.mediaDevices?.getUserMedia) {
         setCameraError(
           "Camera access is not supported by this browser.",
         );
@@ -743,7 +744,7 @@ export default function PublicScanPage({
 
                   if (
                     !isSameRecentValue &&
-                    !processingScan
+                    !processingScanRef.current
                   ) {
                     await submitScan(
                       value,
@@ -791,7 +792,6 @@ export default function PublicScanPage({
         stopCamera();
       }
     }, [
-      processingScan,
       resetScanFeedback,
       stopCamera,
       submitScan,
@@ -815,6 +815,14 @@ export default function PublicScanPage({
     startCamera,
     stopCamera,
   ]);
+
+  const goToDaySelection =
+    () => {
+      resetScanFeedback();
+      setSelectedDay(null);
+      setSelectedItem(null);
+      setStep("day");
+    };
 
   const selectDay =
     (day: ScanDay) => {
@@ -848,8 +856,16 @@ export default function PublicScanPage({
       }
 
       if (step === "day") {
-        window.history.back();
+        setSelectedDay(null);
+        setStep("event");
       }
+    };
+
+  const handleNextScan =
+    () => {
+      resetScanFeedback();
+      setShowManualInput(false);
+      void startCamera();
     };
 
   const handleManualScan =
@@ -864,17 +880,6 @@ export default function PublicScanPage({
 
       setManualValue("");
     };
-
-  const handleNextScan =
-    useCallback(() => {
-      resetScanFeedback();
-      lastScannedValueRef.current = "";
-      lastScanTimeRef.current = 0;
-      void startCamera();
-    }, [
-      resetScanFeedback,
-      startCamera,
-    ]);
 
   if (loading) {
     return (
@@ -968,7 +973,7 @@ export default function PublicScanPage({
 
         <div className="relative z-10 mx-auto mt-5 max-w-4xl">
           <div className="mb-5 flex items-center justify-between gap-3">
-            {true ? (
+            {step !== "event" ? (
               <button
                 type="button"
                 onClick={goBack}
@@ -982,12 +987,18 @@ export default function PublicScanPage({
             )}
 
             <div className="flex items-center gap-1.5">
-              {["day", "item", "scanner"].map(
+              {[
+                "event",
+                "day",
+                "item",
+                "scanner",
+              ].map(
                 (
                   currentStep,
                   index,
                 ) => {
                   const steps = [
+                    "event",
                     "day",
                     "item",
                     "scanner",
@@ -1021,11 +1032,83 @@ export default function PublicScanPage({
             <div className="w-[72px]" />
           </div>
 
+          {step === "event" && (
+            <section className="overflow-hidden rounded-[2rem] border border-[#EA580C]/10 bg-white shadow-xl shadow-[#241000]/5">
+              <div className="bg-gradient-to-br from-[#241000] via-[#4b1800] to-[#EA580C] px-6 py-10 text-white sm:px-10 sm:py-14">
+                <div className="max-w-2xl">
+                  <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold backdrop-blur">
+                    <ShieldCheck className="h-4 w-4" />
+                    Event scanning
+                  </div>
+
+                  <h2 className="text-3xl font-black tracking-tight sm:text-5xl">
+                    {event?.name}
+                  </h2>
+
+                  {event?.description && (
+                    <p className="mt-4 max-w-xl text-sm leading-7 text-white/70 sm:text-base">
+                      {event.description}
+                    </p>
+                  )}
+
+                  <div className="mt-6 flex flex-wrap gap-3">
+                    {event?.location && (
+                      <div className="inline-flex items-center gap-2 rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-white/80">
+                        <MapPin className="h-4 w-4" />
+                        {event.location}
+                      </div>
+                    )}
+
+                    {event?.startDate && (
+                      <div className="rounded-xl bg-white/10 px-3 py-2 text-xs font-semibold text-white/80">
+                        {formatDate(
+                          event.startDate,
+                        )}
+                        {event.endDate
+                          ? ` – ${formatDate(
+                              event.endDate,
+                            )}`
+                          : ""}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-6 sm:p-10">
+                <p className="text-xs font-black uppercase tracking-[0.18em] text-[#EA580C]">
+                  Step 1
+                </p>
+
+                <h3 className="mt-2 text-2xl font-black">
+                  Confirm event
+                </h3>
+
+                <p className="mt-2 max-w-xl text-sm leading-6 text-[#241000]/55">
+                  Continue to select the
+                  event day and scanning
+                  module.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={
+                    goToDaySelection
+                  }
+                  className="mt-7 inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-[#EA580C] px-5 py-4 text-sm font-black text-white shadow-lg shadow-[#EA580C]/20 transition hover:bg-[#c94b08] sm:w-auto sm:min-w-64"
+                >
+                  Continue
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </div>
+            </section>
+          )}
+
           {step === "day" && (
             <section>
               <div className="mb-6">
                 <p className="text-xs font-black uppercase tracking-[0.18em] text-[#EA580C]">
-                  Step 1
+                  Step 2
                 </p>
 
                 <h2 className="mt-2 text-3xl font-black tracking-tight">
@@ -1106,7 +1189,7 @@ export default function PublicScanPage({
               <section>
                 <div className="mb-6">
                   <p className="text-xs font-black uppercase tracking-[0.18em] text-[#EA580C]">
-                    Step 2
+                    Step 3
                   </p>
 
                   <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1191,7 +1274,7 @@ export default function PublicScanPage({
                 <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <p className="text-xs font-black uppercase tracking-[0.18em] text-[#EA580C]">
-                      Step 3
+                      Step 4
                     </p>
 
                     <h2 className="mt-2 text-3xl font-black tracking-tight">
@@ -1318,41 +1401,173 @@ export default function PublicScanPage({
                   </div>
 
                   <div className="space-y-4">
-                    <div className="rounded-[2rem] border border-[#EA580C]/10 bg-white p-6 shadow-xl shadow-[#241000]/5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EA580C]/10 text-[#EA580C]">
-                          <ScanLine className="h-6 w-6" />
+                    {successResult ? (
+                      <div className="rounded-[2rem] border border-emerald-200 bg-white p-6 shadow-xl shadow-emerald-950/5">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50">
+                          <CheckCircle2 className="h-8 w-8 text-emerald-600" />
                         </div>
 
-                        <div>
-                          <p className="text-xs font-black uppercase tracking-[0.15em] text-[#EA580C]">
-                            Active module
+                        <p className="mt-5 text-xs font-black uppercase tracking-[0.15em] text-emerald-600">
+                          Scan successful
+                        </p>
+
+                        <h3 className="mt-2 text-2xl font-black">
+                          {successResult
+                            .attendee
+                            ?.name}
+                        </h3>
+
+                        <div className="mt-4 rounded-xl bg-[#fffaf7] p-4">
+                          <p className="text-xs font-bold text-[#241000]/45">
+                            Registration
                           </p>
 
-                          <h3 className="text-lg font-black">
-                            {selectedItem.name}
-                          </h3>
+                          <p className="mt-1 text-sm font-black">
+                            {
+                              successResult
+                                .attendee
+                                ?.registrationNumber
+                            }
+                          </p>
+                        </div>
+
+                        <div className="mt-3 rounded-xl bg-[#fffaf7] p-4">
+                          <p className="text-xs font-bold text-[#241000]/45">
+                            Collected
+                          </p>
+
+                          <p className="mt-1 text-sm font-black">
+                            {
+                              successResult
+                                .item
+                                ?.name
+                            }
+                          </p>
+                        </div>
+
+                        <p className="mt-4 text-xs font-semibold text-[#241000]/45">
+                          {formatScanTime(
+                            successResult.scannedAt,
+                          )}
+                        </p>
+
+                        <button
+                          type="button"
+                          onClick={handleNextScan}
+                          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-4 py-3 text-sm font-black text-white shadow-lg shadow-[#EA580C]/20 transition hover:bg-[#c94b08]"
+                        >
+                          <ScanLine className="h-4 w-4" />
+                          Ready for Next Scan
+                        </button>
+                      </div>
+                    ) : duplicateResult ? (
+                      <div className="rounded-[2rem] border border-amber-200 bg-white p-6 shadow-xl shadow-amber-950/5">
+                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50">
+                          <XCircle className="h-8 w-8 text-amber-600" />
+                        </div>
+
+                        <p className="mt-5 text-xs font-black uppercase tracking-[0.15em] text-amber-600">
+                          Already scanned
+                        </p>
+
+                        <h3 className="mt-2 text-2xl font-black">
+                          {
+                            duplicateResult
+                              .attendee
+                              ?.name
+                          }
+                        </h3>
+
+                        <p className="mt-3 text-sm leading-6 text-[#241000]/55">
+                          This attendee has
+                          already been recorded
+                          for{" "}
+                          <strong>
+                            {
+                              duplicateResult
+                                .item
+                                ?.name
+                            }
+                          </strong>{" "}
+                          on{" "}
+                          <strong>
+                            {
+                              duplicateResult
+                                .day
+                                ?.name
+                            }
+                          </strong>
+                          .
+                        </p>
+
+                        <div className="mt-5 rounded-xl bg-amber-50 p-4">
+                          <p className="text-xs font-bold text-amber-700">
+                            Previous scan
+                          </p>
+
+                          <p className="mt-1 text-sm font-black text-amber-900">
+                            {formatScanTime(
+                              duplicateResult.scannedAt,
+                            )}
+                          </p>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={handleNextScan}
+                          className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-4 py-3 text-sm font-black text-white shadow-lg shadow-[#EA580C]/20 transition hover:bg-[#c94b08]"
+                        >
+                          <ScanLine className="h-4 w-4" />
+                          Scan Next Person
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="rounded-[2rem] border border-[#EA580C]/10 bg-white p-6 shadow-xl shadow-[#241000]/5">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EA580C]/10 text-[#EA580C]">
+                            <ScanLine className="h-6 w-6" />
+                          </div>
+
+                          <div>
+                            <p className="text-xs font-black uppercase tracking-[0.15em] text-[#EA580C]">
+                              Active module
+                            </p>
+
+                            <h3 className="text-lg font-black">
+                              {
+                                selectedItem.name
+                              }
+                            </h3>
+                          </div>
+                        </div>
+
+                        <div className="mt-6 rounded-2xl bg-[#fffaf7] p-5">
+                          <p className="text-xs font-bold text-[#241000]/45">
+                            Scanning
+                          </p>
+
+                          <p className="mt-1 text-sm font-black">
+                            {
+                              selectedDay.name
+                            }{" "}
+                            •{" "}
+                            {
+                              selectedItem.name
+                            }
+                          </p>
+                        </div>
+
+                        <div className="mt-5 flex items-start gap-3">
+                          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#EA580C]" />
+
+                          <p className="text-sm leading-6 text-[#241000]/55">
+                            Each attendee can be
+                            recorded only once for
+                            this module on this day.
+                          </p>
                         </div>
                       </div>
-
-                      <div className="mt-6 rounded-2xl bg-[#fffaf7] p-5">
-                        <p className="text-xs font-bold text-[#241000]/45">
-                          Scanning
-                        </p>
-
-                        <p className="mt-1 text-sm font-black">
-                          {selectedDay.name} • {selectedItem.name}
-                        </p>
-                      </div>
-
-                      <div className="mt-5 flex items-start gap-3">
-                        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#EA580C]" />
-
-                        <p className="text-sm leading-6 text-[#241000]/55">
-                          Each attendee can be recorded only once for this module on this day.
-                        </p>
-                      </div>
-                    </div>
+                    )}
 
                     {scanMessage &&
                       !successResult &&
@@ -1379,19 +1594,19 @@ export default function PublicScanPage({
                               manualValue
                             }
                             onChange={(
-                              inputEvent,
+                              event,
                             ) =>
                               setManualValue(
-                                inputEvent
+                                event
                                   .target
                                   .value,
                               )
                             }
                             onKeyDown={(
-                              keyboardEvent,
+                              event,
                             ) => {
                               if (
-                                keyboardEvent.key ===
+                                event.key ===
                                 "Enter"
                               ) {
                                 void handleManualScan();
@@ -1423,6 +1638,124 @@ export default function PublicScanPage({
                     )}
                   </div>
                 </div>
+
+                {(successResult || duplicateResult) && (
+                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#241000]/70 px-4 py-6 backdrop-blur-md">
+                    <div className="w-full max-w-md rounded-[2rem] border border-white/20 bg-white p-6 shadow-2xl sm:p-8">
+                      {successResult ? (
+                        <>
+                          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50">
+                            <CheckCircle2 className="h-9 w-9 text-emerald-600" />
+                          </div>
+
+                          <p className="mt-5 text-center text-xs font-black uppercase tracking-[0.18em] text-emerald-600">
+                            Scan Successful
+                          </p>
+
+                          <h3 className="mt-2 text-center text-3xl font-black text-[#241000]">
+                            {successResult.attendee?.name || "Attendee"}
+                          </h3>
+
+                          <div className="mt-6 space-y-3">
+                            <div className="rounded-xl bg-[#fffaf7] p-4">
+                              <p className="text-xs font-bold text-[#241000]/45">Registration</p>
+                              <p className="mt-1 text-sm font-black text-[#241000]">
+                                {successResult.attendee?.registrationNumber || "—"}
+                              </p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="rounded-xl bg-[#fffaf7] p-4">
+                                <p className="text-xs font-bold text-[#241000]/45">Module</p>
+                                <p className="mt-1 text-sm font-black text-[#241000]">
+                                  {successResult.item?.name || "—"}
+                                </p>
+                              </div>
+
+                              <div className="rounded-xl bg-[#fffaf7] p-4">
+                                <p className="text-xs font-bold text-[#241000]/45">Day</p>
+                                <p className="mt-1 text-sm font-black text-[#241000]">
+                                  {successResult.day?.name || "—"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl bg-emerald-50 p-4">
+                              <p className="text-xs font-bold text-emerald-700">Scanned successfully at</p>
+                              <p className="mt-1 text-lg font-black text-emerald-900">
+                                {formatScanTime(successResult.scannedAt) || "—"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleNextScan}
+                            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-4 text-sm font-black text-white shadow-lg shadow-[#EA580C]/20 transition hover:bg-[#c94b08]"
+                          >
+                            <ScanLine className="h-5 w-5" />
+                            Ready for Next Scan
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-amber-50">
+                            <XCircle className="h-9 w-9 text-amber-600" />
+                          </div>
+
+                          <p className="mt-5 text-center text-xs font-black uppercase tracking-[0.18em] text-amber-600">
+                            Already Scanned
+                          </p>
+
+                          <h3 className="mt-2 text-center text-3xl font-black text-[#241000]">
+                            {duplicateResult?.attendee?.name || "Attendee"}
+                          </h3>
+
+                          <div className="mt-6 space-y-3">
+                            <div className="rounded-xl bg-[#fffaf7] p-4">
+                              <p className="text-xs font-bold text-[#241000]/45">Registration</p>
+                              <p className="mt-1 text-sm font-black text-[#241000]">
+                                {duplicateResult?.attendee?.registrationNumber || "—"}
+                              </p>
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <div className="rounded-xl bg-[#fffaf7] p-4">
+                                <p className="text-xs font-bold text-[#241000]/45">Module</p>
+                                <p className="mt-1 text-sm font-black text-[#241000]">
+                                  {duplicateResult?.item?.name || "—"}
+                                </p>
+                              </div>
+
+                              <div className="rounded-xl bg-[#fffaf7] p-4">
+                                <p className="text-xs font-bold text-[#241000]/45">Day</p>
+                                <p className="mt-1 text-sm font-black text-[#241000]">
+                                  {duplicateResult?.day?.name || "—"}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="rounded-xl bg-amber-50 p-4">
+                              <p className="text-xs font-bold text-amber-700">Already scanned at</p>
+                              <p className="mt-1 text-lg font-black text-amber-900">
+                                {formatScanTime(duplicateResult?.scannedAt) || "—"}
+                              </p>
+                            </div>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleNextScan}
+                            className="mt-6 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-4 text-sm font-black text-white shadow-lg shadow-[#EA580C]/20 transition hover:bg-[#c94b08]"
+                          >
+                            <ScanLine className="h-5 w-5" />
+                            Scan Next Person
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
         </div>
@@ -1433,164 +1766,6 @@ export default function PublicScanPage({
             event scanning
           </p>
         </footer>
-
-        {(successResult || duplicateResult) && (
-          <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-[#241000]/55 px-4 py-6 backdrop-blur-sm"
-            role="presentation"
-          >
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-label={successResult ? "Scan successful" : "Already scanned"}
-              className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-white/70 bg-white p-6 shadow-2xl shadow-[#241000]/25 sm:p-7"
-            >
-              <button
-                type="button"
-                onClick={handleNextScan}
-                aria-label="Close scan result"
-                className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-[#241000]/5 text-[#241000]/55 transition hover:bg-[#241000]/10 hover:text-[#241000]"
-              >
-                <XCircle className="h-5 w-5" />
-              </button>
-
-              {successResult ? (
-                <>
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50">
-                    <CheckCircle2 className="h-9 w-9 text-emerald-600" />
-                  </div>
-
-                  <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-emerald-600">
-                    Scan successful
-                  </p>
-
-                  <h3
-                    className="mt-2 pr-8 text-2xl font-black tracking-tight text-[#241000]"
-                  >
-                    {successResult.attendee?.name || "Attendee"}
-                  </h3>
-
-                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl bg-[#fffaf7] p-4">
-                      <p className="text-xs font-bold text-[#241000]/45">
-                        Registration
-                      </p>
-                      <p className="mt-1 text-sm font-black">
-                        {successResult.attendee?.registrationNumber || "—"}
-                      </p>
-                    </div>
-
-                    <div className="rounded-xl bg-[#fffaf7] p-4">
-                      <p className="text-xs font-bold text-[#241000]/45">
-                        Category
-                      </p>
-                      <p className="mt-1 text-sm font-black">
-                        {successResult.attendee?.category || "—"}
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="mt-3 rounded-xl bg-[#fffaf7] p-4">
-                    <p className="text-xs font-bold text-[#241000]/45">
-                      Collected
-                    </p>
-                    <p className="mt-1 text-sm font-black">
-                      {successResult.item?.name || selectedItem?.name || "—"}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-[#241000]/45">
-                      {successResult.day?.name || selectedDay?.name || ""}
-                    </p>
-                  </div>
-
-                  <div className="mt-3 rounded-xl bg-emerald-50 p-4">
-                    <p className="text-xs font-bold text-emerald-700">
-                      Scanned successfully at
-                    </p>
-                    <p className="mt-1 text-lg font-black text-emerald-900">
-                      {formatScanTime(successResult.scannedAt) || "Just now"}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-emerald-800/65">
-                      {formatScanDateTime(successResult.scannedAt)}
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleNextScan}
-                    className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-3.5 text-sm font-black text-white shadow-lg shadow-[#EA580C]/20 transition hover:bg-[#c94b08]"
-                  >
-                    <ScanLine className="h-4 w-4" />
-                    Scan Next Attendee
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50">
-                    <XCircle className="h-9 w-9 text-amber-600" />
-                  </div>
-
-                  <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-amber-600">
-                    Already scanned
-                  </p>
-
-                  <h3
-                    className="mt-2 pr-8 text-2xl font-black tracking-tight text-[#241000]"
-                  >
-                    {duplicateResult?.attendee?.name || "Attendee"}
-                  </h3>
-
-                  <div className="mt-5 rounded-xl bg-[#fffaf7] p-4">
-                    <p className="text-xs font-bold text-[#241000]/45">
-                      Registration
-                    </p>
-                    <p className="mt-1 text-sm font-black">
-                      {duplicateResult?.attendee?.registrationNumber || "—"}
-                    </p>
-                  </div>
-
-                  <div className="mt-3 rounded-xl bg-[#fffaf7] p-4">
-                    <p className="text-xs font-bold text-[#241000]/45">
-                      Module
-                    </p>
-                    <p className="mt-1 text-sm font-black">
-                      {duplicateResult?.item?.name || selectedItem?.name || "—"}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-[#241000]/45">
-                      {duplicateResult?.day?.name || selectedDay?.name || ""}
-                    </p>
-                  </div>
-
-                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
-                    <p className="text-xs font-bold text-amber-700">
-                      Last scanned at
-                    </p>
-                    <p className="mt-1 text-lg font-black text-amber-900">
-                      {formatScanTime(duplicateResult?.scannedAt) || "Time unavailable"}
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-amber-800/65">
-                      {formatScanDateTime(duplicateResult?.scannedAt) || "Previous scan time was not returned."}
-                    </p>
-                  </div>
-
-                  <div className="mt-4 rounded-xl bg-[#fffaf7] p-4">
-                    <p className="text-sm leading-6 text-[#241000]/60">
-                      This attendee has already been recorded for this module on this day. No new scan was created.
-                    </p>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={handleNextScan}
-                    className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-3.5 text-sm font-black text-white shadow-lg shadow-[#EA580C]/20 transition hover:bg-[#c94b08]"
-                  >
-                    <ScanLine className="h-4 w-4" />
-                    Scan Next Person
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
-        )}
       </div>
     </main>
   );

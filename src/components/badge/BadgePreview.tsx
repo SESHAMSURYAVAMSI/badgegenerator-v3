@@ -20,15 +20,9 @@ import type {
 
 interface BadgePreviewProps {
   config: BadgeConfigData;
-
   attendee?: BadgePreviewAttendee;
-
   selectedField: BadgeFieldType | null;
-
-  onSelectField: (
-    fieldId: BadgeFieldType,
-  ) => void;
-
+  onSelectField: (fieldId: BadgeFieldType) => void;
   onUpdateField: (
     fieldId: BadgeFieldType,
     updates: Partial<BadgeFieldConfig>,
@@ -37,37 +31,29 @@ interface BadgePreviewProps {
 
 interface Interaction {
   fieldId: BadgeFieldType;
-
   mode: "drag" | "resize";
-
   startPointerX: number;
   startPointerY: number;
-
   startX: number;
   startY: number;
-
   startWidth: number;
   startHeight: number;
 }
 
-const DEFAULT_ATTENDEE: BadgePreviewAttendee =
-  {
-    name: "Surya Vamsi",
-    registrationNumber:
-      "REG-2026-001",
-    category: "Delegate",
-    qrValue: "REG-2026-001",
-  };
+const DEFAULT_ATTENDEE: BadgePreviewAttendee = {
+  name: "Surya Vamsi",
+  registrationNumber: "REG-2026-001",
+  medicalCouncilNumber: "TS-MCI-12345",
+  category: "Delegate",
+  qrValue: "REG-2026-001",
+};
 
 function clamp(
   value: number,
   min: number,
   max: number,
 ): number {
-  return Math.min(
-    Math.max(value, min),
-    max,
-  );
+  return Math.min(Math.max(value, min), max);
 }
 
 export default function BadgePreview({
@@ -77,39 +63,24 @@ export default function BadgePreview({
   onSelectField,
   onUpdateField,
 }: BadgePreviewProps) {
-  const [qrImage, setQrImage] =
-    useState<string | null>(null);
+  const [qrImage, setQrImage] = useState<string | null>(null);
 
-  const interactionRef =
-    useRef<Interaction | null>(
-      null,
-    );
+  const interactionRef = useRef<Interaction | null>(null);
 
-  const previewAttendee =
-    attendee ??
-    DEFAULT_ATTENDEE;
+  const previewAttendee = attendee ?? DEFAULT_ATTENDEE;
 
-  const previewWidth =
-    Math.min(
-      Math.max(config.width, 1),
-      560,
-    );
+  const previewWidth = Math.min(
+    Math.max(config.width, 1),
+    560,
+  );
 
   const scale =
-    config.width > 0
-      ? previewWidth /
-        config.width
-      : 1;
+    config.width > 0 ? previewWidth / config.width : 1;
 
-  const previewHeight =
-    Math.max(
-      config.height,
-      1,
-    ) * scale;
+  const previewHeight = Math.max(config.height, 1) * scale;
 
   const qrValue =
-    config.qrSource ===
-    "qrValue"
+    config.qrSource === "qrValue"
       ? previewAttendee.qrValue ||
         previewAttendee.registrationNumber
       : previewAttendee.registrationNumber ||
@@ -120,26 +91,20 @@ export default function BadgePreview({
 
     async function createQR() {
       try {
-        const dataUrl =
-          await QRCode.toDataURL(
-            qrValue ||
-              "PREVIEW-QR-001",
-            {
-              width: 800,
-              margin: 1,
-              errorCorrectionLevel:
-                "H",
-            },
-          );
+        const dataUrl = await QRCode.toDataURL(
+          qrValue || "PREVIEW-QR-001",
+          {
+            width: 800,
+            margin: 1,
+            errorCorrectionLevel: "H",
+          },
+        );
 
         if (!cancelled) {
           setQrImage(dataUrl);
         }
       } catch (error) {
-        console.error(
-          "QR generation failed:",
-          error,
-        );
+        console.error("QR generation failed:", error);
 
         if (!cancelled) {
           setQrImage(null);
@@ -155,164 +120,104 @@ export default function BadgePreview({
   }, [qrValue]);
 
   useEffect(() => {
-    function handleMove(
-      event: globalThis.PointerEvent,
-    ) {
-      const current =
-        interactionRef.current;
+    function handleMove(event: globalThis.PointerEvent) {
+      const current = interactionRef.current;
 
       if (!current) {
         return;
       }
 
       const deltaX =
-        (event.clientX -
-          current.startPointerX) /
-        scale;
+        (event.clientX - current.startPointerX) / scale;
 
       const deltaY =
-        (event.clientY -
-          current.startPointerY) /
-        scale;
+        (event.clientY - current.startPointerY) / scale;
 
-      if (
-        current.mode ===
-        "drag"
-      ) {
+      if (current.mode === "drag") {
         const x = clamp(
-          current.startX +
-            deltaX,
+          current.startX + deltaX,
           0,
           Math.max(
             0,
-            config.width -
-              current.startWidth,
+            config.width - current.startWidth,
           ),
         );
 
         const y = clamp(
-          current.startY +
-            deltaY,
+          current.startY + deltaY,
           0,
           Math.max(
             0,
-            config.height -
-              current.startHeight,
+            config.height - current.startHeight,
           ),
         );
 
-        onUpdateField(
-          current.fieldId,
-          {
-            x,
-            y,
-          },
-        );
+        onUpdateField(current.fieldId, {
+          x,
+          y,
+        });
 
         return;
       }
 
-      if (
-        current.fieldId ===
-        "qr"
-      ) {
-        const delta =
-          Math.max(
-            deltaX,
-            deltaY,
-          );
+      if (current.fieldId === "qr") {
+        const delta = Math.max(deltaX, deltaY);
 
-        const maximum =
-          Math.min(
-            config.width -
-              current.startX,
-            config.height -
-              current.startY,
-          );
+        const maximum = Math.min(
+          config.width - current.startX,
+          config.height - current.startY,
+        );
 
         const size = clamp(
-          current.startWidth +
-            delta,
+          current.startWidth + delta,
           40,
-          Math.max(
-            40,
-            maximum,
-          ),
+          Math.max(40, maximum),
         );
 
-        onUpdateField(
-          current.fieldId,
-          {
-            width: size,
-            height: size,
-          },
-        );
+        onUpdateField(current.fieldId, {
+          width: size,
+          height: size,
+        });
 
         return;
       }
 
       const width = clamp(
-        current.startWidth +
-          deltaX,
+        current.startWidth + deltaX,
         20,
         Math.max(
           20,
-          config.width -
-            current.startX,
+          config.width - current.startX,
         ),
       );
 
       const height = clamp(
-        current.startHeight +
-          deltaY,
+        current.startHeight + deltaY,
         20,
         Math.max(
           20,
-          config.height -
-            current.startY,
+          config.height - current.startY,
         ),
       );
 
-      onUpdateField(
-        current.fieldId,
-        {
-          width,
-          height,
-        },
-      );
+      onUpdateField(current.fieldId, {
+        width,
+        height,
+      });
     }
 
     function handleUp() {
-      interactionRef.current =
-        null;
+      interactionRef.current = null;
     }
 
-    window.addEventListener(
-      "pointermove",
-      handleMove,
-    );
-
-    window.addEventListener(
-      "pointerup",
-      handleUp,
-    );
+    window.addEventListener("pointermove", handleMove);
+    window.addEventListener("pointerup", handleUp);
 
     return () => {
-      window.removeEventListener(
-        "pointermove",
-        handleMove,
-      );
-
-      window.removeEventListener(
-        "pointerup",
-        handleUp,
-      );
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleUp);
     };
-  }, [
-    config,
-    onUpdateField,
-    scale,
-  ]);
+  }, [config, onUpdateField, scale]);
 
   function startDrag(
     event: PointerEvent<HTMLDivElement>,
@@ -324,21 +229,12 @@ export default function BadgePreview({
     interactionRef.current = {
       fieldId: field.id,
       mode: "drag",
-
-      startPointerX:
-        event.clientX,
-
-      startPointerY:
-        event.clientY,
-
+      startPointerX: event.clientX,
+      startPointerY: event.clientY,
       startX: field.x,
       startY: field.y,
-
-      startWidth:
-        field.width,
-
-      startHeight:
-        field.height,
+      startWidth: field.width,
+      startHeight: field.height,
     };
   }
 
@@ -352,21 +248,12 @@ export default function BadgePreview({
     interactionRef.current = {
       fieldId: field.id,
       mode: "resize",
-
-      startPointerX:
-        event.clientX,
-
-      startPointerY:
-        event.clientY,
-
+      startPointerX: event.clientX,
+      startPointerY: event.clientY,
       startX: field.x,
       startY: field.y,
-
-      startWidth:
-        field.width,
-
-      startHeight:
-        field.height,
+      startWidth: field.width,
+      startHeight: field.height,
     };
   }
 
@@ -377,33 +264,22 @@ export default function BadgePreview({
         style={{
           width: previewWidth,
           height: previewHeight,
-
-          borderRadius:
-            config.borderRadius *
-            scale,
-
+          borderRadius: config.borderRadius * scale,
           border:
-            config.borderWidth >
-            0
+            config.borderWidth > 0
               ? `${Math.max(
                   1,
-                  config.borderWidth *
-                    scale,
-                )}px solid ${
-                  config.borderColor
-                }`
+                  config.borderWidth * scale,
+                )}px solid ${config.borderColor}`
               : "none",
         }}
         onPointerDown={() => {
-          interactionRef.current =
-            null;
+          interactionRef.current = null;
         }}
       >
         {config.backgroundImage ? (
           <img
-            src={
-              config.backgroundImage
-            }
+            src={config.backgroundImage}
             alt={
               config.backgroundImageName ||
               "Badge template"
@@ -415,40 +291,24 @@ export default function BadgePreview({
           <div
             className="absolute inset-0"
             style={{
-              backgroundColor:
-                config.backgroundColor,
+              backgroundColor: config.backgroundColor,
             }}
           />
         )}
 
-        {config.fields.map(
-          (field) => (
-            <BadgeField
-              key={field.id}
-              field={field}
-              scale={scale}
-              selected={
-                selectedField ===
-                field.id
-              }
-              attendee={
-                previewAttendee
-              }
-              qrImage={qrImage}
-              onSelect={() =>
-                onSelectField(
-                  field.id,
-                )
-              }
-              onStartDrag={
-                startDrag
-              }
-              onStartResize={
-                startResize
-              }
-            />
-          ),
-        )}
+        {config.fields.map((field) => (
+          <BadgeField
+            key={field.id}
+            field={field}
+            scale={scale}
+            selected={selectedField === field.id}
+            attendee={previewAttendee}
+            qrImage={qrImage}
+            onSelect={() => onSelectField(field.id)}
+            onStartDrag={startDrag}
+            onStartResize={startResize}
+          />
+        ))}
 
         {config.backgroundImage && (
           <div className="pointer-events-none absolute bottom-3 left-1/2 z-40 -translate-x-1/2">

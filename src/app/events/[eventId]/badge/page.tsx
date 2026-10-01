@@ -52,6 +52,7 @@ interface AttendeeApiData {
   badgeUrl?: string;
   badgeGeneratedAt?: string;
   badgeGenerationCount?: number;
+  medicalCouncilNumber?: string;
 }
 
 function createFieldsForTemplate(
@@ -220,7 +221,9 @@ function createFieldsForTemplate(
 
 function normalizeAttendee(
   attendee: AttendeeApiData,
-): BadgeAttendee {
+): BadgeAttendee & {
+  medicalCouncilNumber: string;
+} {
   const registrationNumber =
     attendee.registrationNumber ||
     attendee._id;
@@ -233,6 +236,10 @@ function normalizeAttendee(
     attendee.qrValue ||
     registrationNumber;
 
+  const medicalCouncilNumber =
+    attendee.medicalCouncilNumber ||
+    "";
+
   return {
     _id: attendee._id,
     name:
@@ -240,6 +247,7 @@ function normalizeAttendee(
       "Attendee",
     email: attendee.email,
     registrationNumber,
+    medicalCouncilNumber,
     category,
     qrValue,
     badgeGenerated:
@@ -272,7 +280,11 @@ export default function BadgeDesignerPage() {
     useState<EventData | null>(null);
 
   const [attendees, setAttendees] =
-    useState<BadgeAttendee[]>([]);
+    useState<
+      (BadgeAttendee & {
+        medicalCouncilNumber: string;
+      })[]
+    >([]);
 
   const [config, setConfig] =
     useState<BadgeConfigData>(
@@ -344,6 +356,8 @@ export default function BadgeDesignerPage() {
           selectedAttendee.name,
         registrationNumber:
           selectedAttendee.registrationNumber,
+        medicalCouncilNumber:
+          selectedAttendee.medicalCouncilNumber,
         category:
           selectedAttendee.category,
         qrValue:

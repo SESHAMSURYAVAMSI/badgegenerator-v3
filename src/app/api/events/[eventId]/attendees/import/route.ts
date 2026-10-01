@@ -16,6 +16,7 @@ interface ImportRow {
   name?: unknown;
   email?: unknown;
   phone?: unknown;
+  medicalCouncilNumber?: unknown;
   registrationNumber?: unknown;
   category?: unknown;
   qrValue?: unknown;
@@ -25,6 +26,7 @@ interface CleanRow {
   name: string;
   email: string;
   phone: string;
+  medicalCouncilNumber: string;
   registrationNumber: string;
   category: string;
   qrValue: string;
@@ -333,6 +335,11 @@ export async function POST(
       const phone =
         cleanString(row.phone);
 
+      const medicalCouncilNumber =
+        cleanString(
+          row.medicalCouncilNumber,
+        ).toUpperCase();
+
       const registrationNumber =
         normalizeRegistrationNumber(
           cleanString(
@@ -414,6 +421,7 @@ export async function POST(
         name,
         email,
         phone,
+        medicalCouncilNumber,
         registrationNumber,
         category,
         qrValue,
@@ -501,6 +509,7 @@ export async function POST(
       name: string;
       email: string;
       phone: string;
+      medicalCouncilNumber: string;
       registrationNumber: string;
       category: string;
       qrValue: string;
@@ -566,6 +575,8 @@ export async function POST(
         name: row.name,
         email: row.email,
         phone: row.phone,
+        medicalCouncilNumber:
+          row.medicalCouncilNumber,
 
         registrationNumber,
 

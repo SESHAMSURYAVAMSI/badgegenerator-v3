@@ -41,6 +41,7 @@ interface Attendee {
   name: string;
   email: string;
   phone?: string;
+  medicalCouncilNumber?: string;
 
   registrationNumber: string;
   category: string;
@@ -81,6 +82,7 @@ interface AttendeeForm {
   name: string;
   email: string;
   phone: string;
+  medicalCouncilNumber: string;
   registrationNumber: string;
   category: string;
   qrValue: string;
@@ -90,6 +92,7 @@ const initialForm: AttendeeForm = {
   name: "",
   email: "",
   phone: "",
+  medicalCouncilNumber: "",
   registrationNumber: "",
   category: "",
   qrValue: "",
@@ -351,6 +354,8 @@ export default function AttendeesPage() {
       name: attendee.name,
       email: attendee.email,
       phone: attendee.phone ?? "",
+      medicalCouncilNumber:
+        attendee.medicalCouncilNumber ?? "",
       registrationNumber:
         attendee.registrationNumber,
       category: attendee.category ?? "",
@@ -412,6 +417,8 @@ export default function AttendeesPage() {
             name: editForm.name.trim(),
             email: editForm.email.trim(),
             phone: editForm.phone.trim(),
+            medicalCouncilNumber:
+              editForm.medicalCouncilNumber.trim(),
             registrationNumber:
               editForm.registrationNumber.trim(),
             category: editForm.category.trim(),
@@ -918,6 +925,10 @@ export default function AttendeesPage() {
                       </th>
 
                       <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">
+                        Medical Council Number
+                      </th>
+
+                      <th className="px-6 py-4 text-left text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">
                         Category
                       </th>
 
@@ -1009,6 +1020,12 @@ export default function AttendeesPage() {
                               {
                                 attendee.registrationNumber
                               }
+                            </span>
+                          </td>
+
+                          <td className="px-6 py-4">
+                            <span className="text-xs font-bold text-[#241000]">
+                              {attendee.medicalCouncilNumber || "—"}
                             </span>
                           </td>
 
@@ -1168,7 +1185,7 @@ export default function AttendeesPage() {
                         </div>
                       </div>
 
-                      <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div className="mt-4 grid gap-3 sm:grid-cols-3">
                         <div className="rounded-xl bg-stone-50 p-3">
                           <p className="text-[10px] font-bold uppercase tracking-wide text-stone-400">
                             Category
@@ -1177,6 +1194,16 @@ export default function AttendeesPage() {
                           <p className="mt-1 text-xs font-semibold">
                             {attendee.category ||
                               "General"}
+                          </p>
+                        </div>
+
+                        <div className="rounded-xl bg-stone-50 p-3">
+                          <p className="text-[10px] font-bold uppercase tracking-wide text-stone-400">
+                            Medical Council Number
+                          </p>
+
+                          <p className="mt-1 truncate text-xs font-semibold">
+                            {attendee.medicalCouncilNumber || "—"}
                           </p>
                         </div>
 
@@ -1421,6 +1448,30 @@ export default function AttendeesPage() {
                     className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm outline-none transition focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="attendee-medical-council-number"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Medical Council Number
+                </label>
+
+                <input
+                  id="attendee-medical-council-number"
+                  type="text"
+                  value={form.medicalCouncilNumber}
+                  onChange={(event) =>
+                    updateForm(
+                      "medicalCouncilNumber",
+                      event.target.value,
+                    )
+                  }
+                  placeholder="e.g. TS-MCI-12345"
+                  maxLength={100}
+                  className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm uppercase outline-none transition focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+                />
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
@@ -1689,6 +1740,28 @@ export default function AttendeesPage() {
                     className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm outline-none transition focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label
+                  htmlFor="edit-medical-council-number"
+                  className="mb-2 block text-sm font-semibold"
+                >
+                  Medical Council Number
+                </label>
+                <input
+                  id="edit-medical-council-number"
+                  type="text"
+                  value={editForm.medicalCouncilNumber}
+                  onChange={(event) =>
+                    updateEditForm(
+                      "medicalCouncilNumber",
+                      event.target.value,
+                    )
+                  }
+                  maxLength={100}
+                  className="h-12 w-full rounded-xl border border-stone-200 bg-stone-50/60 px-4 text-sm uppercase outline-none transition focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+                />
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
