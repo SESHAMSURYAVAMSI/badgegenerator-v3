@@ -405,12 +405,12 @@ export default function ScanningDashboardPage({
         <header className="mb-8 flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <Link
-              href={`/events/${eventId}/scanning`}
+              href={`/events/${eventId}`}
               className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-[#EA580C]"
             >
               <ArrowLeft className="h-4 w-4" />
 
-              Scanning Configuration
+              Event
             </Link>
 
             <div className="flex items-start gap-4">

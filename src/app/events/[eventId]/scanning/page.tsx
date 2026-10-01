@@ -53,15 +53,18 @@ interface ScanConfigResponse {
   message?: string;
 }
 
+interface EventData {
+  _id: string;
+  name: string;
+  location?: string;
+  startDate?: string;
+  endDate?: string;
+}
+
 interface EventResponse {
   success: boolean;
-  data?: {
-    _id: string;
-    name: string;
-    location?: string;
-    startDate?: string;
-    endDate?: string;
-  };
+  event?: EventData;
+  data?: EventData;
   message?: string;
 }
 
@@ -243,10 +246,14 @@ export default function ScanningConfigurationPage({
           const configJson =
             (await configResponse.json()) as ScanConfigResponse;
 
+          const eventData =
+            eventJson.event ??
+            eventJson.data;
+
           if (
             !eventResponse.ok ||
             !eventJson.success ||
-            !eventJson.data
+            !eventData
           ) {
             throw new Error(
               eventJson.message ||
@@ -265,7 +272,7 @@ export default function ScanningConfigurationPage({
           }
 
           setEvent(
-            eventJson.data,
+            eventData,
           );
 
           const loadedDays =

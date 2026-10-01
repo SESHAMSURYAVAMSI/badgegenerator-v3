@@ -15,7 +15,6 @@ import {
   ChevronRight,
   Coffee,
   Loader2,
-  MapPin,
   Package,
   RefreshCw,
   ScanLine,
@@ -205,6 +204,27 @@ function formatScanTime(value?: string) {
       second: "2-digit",
     },
   );
+}
+
+function formatScanDateTime(value?: string) {
+  if (!value) {
+    return "";
+  }
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
 }
 
 export default function PublicScanPage({
@@ -505,6 +525,13 @@ export default function PublicScanPage({
             result.success &&
             result.data
           ) {
+            scanningRef.current = false;
+
+            if (animationFrameRef.current !== null) {
+              cancelAnimationFrame(animationFrameRef.current);
+              animationFrameRef.current = null;
+            }
+
             setSuccessResult(
               result.data,
             );
@@ -535,6 +562,13 @@ export default function PublicScanPage({
             result.duplicate &&
             result.data
           ) {
+            scanningRef.current = false;
+
+            if (animationFrameRef.current !== null) {
+              cancelAnimationFrame(animationFrameRef.current);
+              animationFrameRef.current = null;
+            }
+
             setDuplicateResult(
               result.data,
             );
@@ -830,6 +864,17 @@ export default function PublicScanPage({
 
       setManualValue("");
     };
+
+  const handleNextScan =
+    useCallback(() => {
+      resetScanFeedback();
+      lastScannedValueRef.current = "";
+      lastScanTimeRef.current = 0;
+      void startCamera();
+    }, [
+      resetScanFeedback,
+      startCamera,
+    ]);
 
   if (loading) {
     return (
@@ -1273,198 +1318,41 @@ export default function PublicScanPage({
                   </div>
 
                   <div className="space-y-4">
-                    {successResult ? (
-                      <div className="rounded-[2rem] border border-emerald-200 bg-white p-6 shadow-xl shadow-emerald-950/5">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50">
-                          <CheckCircle2 className="h-8 w-8 text-emerald-600" />
+                    <div className="rounded-[2rem] border border-[#EA580C]/10 bg-white p-6 shadow-xl shadow-[#241000]/5">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EA580C]/10 text-[#EA580C]">
+                          <ScanLine className="h-6 w-6" />
                         </div>
 
-                        <p className="mt-5 text-xs font-black uppercase tracking-[0.15em] text-emerald-600">
-                          Scan successful
-                        </p>
-
-                        <h3 className="mt-2 text-2xl font-black">
-                          {
-                            successResult
-                              .attendee
-                              ?.name
-                          }
-                        </h3>
-
-                        <div className="mt-4 rounded-xl bg-[#fffaf7] p-4">
-                          <p className="text-xs font-bold text-[#241000]/45">
-                            Registration
+                        <div>
+                          <p className="text-xs font-black uppercase tracking-[0.15em] text-[#EA580C]">
+                            Active module
                           </p>
 
-                          <p className="mt-1 text-sm font-black">
-                            {
-                              successResult
-                                .attendee
-                                ?.registrationNumber
-                            }
-                          </p>
-                        </div>
-
-                        <div className="mt-3 rounded-xl bg-[#fffaf7] p-4">
-                          <p className="text-xs font-bold text-[#241000]/45">
-                            Day
-                          </p>
-
-                          <p className="mt-1 text-sm font-black">
-                            {
-                              successResult
-                                .day?.name
-                            }
-                          </p>
-                        </div>
-
-                        <div className="mt-3 rounded-xl bg-[#fffaf7] p-4">
-                          <p className="text-xs font-bold text-[#241000]/45">
-                            Collected
-                          </p>
-
-                          <p className="mt-1 text-sm font-black">
-                            {
-                              successResult
-                                .item?.name
-                            }
-                          </p>
-                        </div>
-
-                        <div className="mt-3 rounded-xl bg-emerald-50 p-4">
-                          <p className="text-xs font-bold text-emerald-700">
-                            Scanned at
-                          </p>
-
-                          <p className="mt-1 text-sm font-black text-emerald-900">
-                            {formatScanTime(
-                              successResult.scannedAt,
-                            )}
-                          </p>
-                        </div>
-
-                        <div className="mt-5 flex items-center gap-2 text-xs font-bold text-emerald-600">
-                          <CheckCircle2 className="h-4 w-4" />
-                          Camera remains ready for
-                          the next attendee.
+                          <h3 className="text-lg font-black">
+                            {selectedItem.name}
+                          </h3>
                         </div>
                       </div>
-                    ) : duplicateResult ? (
-                      <div className="rounded-[2rem] border border-amber-200 bg-white p-6 shadow-xl shadow-amber-950/5">
-                        <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50">
-                          <XCircle className="h-8 w-8 text-amber-600" />
-                        </div>
 
-                        <p className="mt-5 text-xs font-black uppercase tracking-[0.15em] text-amber-600">
-                          Already scanned
+                      <div className="mt-6 rounded-2xl bg-[#fffaf7] p-5">
+                        <p className="text-xs font-bold text-[#241000]/45">
+                          Scanning
                         </p>
 
-                        <h3 className="mt-2 text-2xl font-black">
-                          {
-                            duplicateResult
-                              .attendee
-                              ?.name
-                          }
-                        </h3>
-
-                        <div className="mt-4 rounded-xl bg-[#fffaf7] p-4">
-                          <p className="text-xs font-bold text-[#241000]/45">
-                            Registration
-                          </p>
-
-                          <p className="mt-1 text-sm font-black">
-                            {
-                              duplicateResult
-                                .attendee
-                                ?.registrationNumber
-                            }
-                          </p>
-                        </div>
-
-                        <p className="mt-4 text-sm leading-6 text-[#241000]/55">
-                          This attendee has already
-                          been recorded for{" "}
-                          <strong>
-                            {
-                              duplicateResult
-                                .item?.name
-                            }
-                          </strong>{" "}
-                          on{" "}
-                          <strong>
-                            {
-                              duplicateResult
-                                .day?.name
-                            }
-                          </strong>
-                          .
+                        <p className="mt-1 text-sm font-black">
+                          {selectedDay.name} • {selectedItem.name}
                         </p>
-
-                        <div className="mt-5 rounded-xl bg-amber-50 p-4">
-                          <p className="text-xs font-bold text-amber-700">
-                            Previous scan
-                          </p>
-
-                          <p className="mt-1 text-lg font-black text-amber-900">
-                            {formatScanTime(
-                              duplicateResult.scannedAt,
-                            )}
-                          </p>
-                        </div>
-
-                        <div className="mt-5 flex items-center gap-2 text-xs font-bold text-amber-700">
-                          <ScanLine className="h-4 w-4" />
-                          Scanner is ready for the
-                          next attendee.
-                        </div>
                       </div>
-                    ) : (
-                      <div className="rounded-[2rem] border border-[#EA580C]/10 bg-white p-6 shadow-xl shadow-[#241000]/5">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-[#EA580C]/10 text-[#EA580C]">
-                            <ScanLine className="h-6 w-6" />
-                          </div>
 
-                          <div>
-                            <p className="text-xs font-black uppercase tracking-[0.15em] text-[#EA580C]">
-                              Active module
-                            </p>
+                      <div className="mt-5 flex items-start gap-3">
+                        <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#EA580C]" />
 
-                            <h3 className="text-lg font-black">
-                              {
-                                selectedItem.name
-                              }
-                            </h3>
-                          </div>
-                        </div>
-
-                        <div className="mt-6 rounded-2xl bg-[#fffaf7] p-5">
-                          <p className="text-xs font-bold text-[#241000]/45">
-                            Scanning
-                          </p>
-
-                          <p className="mt-1 text-sm font-black">
-                            {
-                              selectedDay.name
-                            }{" "}
-                            •{" "}
-                            {
-                              selectedItem.name
-                            }
-                          </p>
-                        </div>
-
-                        <div className="mt-5 flex items-start gap-3">
-                          <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-[#EA580C]" />
-
-                          <p className="text-sm leading-6 text-[#241000]/55">
-                            Each attendee can be
-                            recorded only once for
-                            this module on this day.
-                          </p>
-                        </div>
+                        <p className="text-sm leading-6 text-[#241000]/55">
+                          Each attendee can be recorded only once for this module on this day.
+                        </p>
                       </div>
-                    )}
+                    </div>
 
                     {scanMessage &&
                       !successResult &&
@@ -1545,6 +1433,164 @@ export default function PublicScanPage({
             event scanning
           </p>
         </footer>
+
+        {(successResult || duplicateResult) && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center bg-[#241000]/55 px-4 py-6 backdrop-blur-sm"
+            role="presentation"
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={successResult ? "Scan successful" : "Already scanned"}
+              className="relative max-h-[90vh] w-full max-w-md overflow-y-auto rounded-[2rem] border border-white/70 bg-white p-6 shadow-2xl shadow-[#241000]/25 sm:p-7"
+            >
+              <button
+                type="button"
+                onClick={handleNextScan}
+                aria-label="Close scan result"
+                className="absolute right-4 top-4 flex h-9 w-9 items-center justify-center rounded-full bg-[#241000]/5 text-[#241000]/55 transition hover:bg-[#241000]/10 hover:text-[#241000]"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+
+              {successResult ? (
+                <>
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-50">
+                    <CheckCircle2 className="h-9 w-9 text-emerald-600" />
+                  </div>
+
+                  <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-emerald-600">
+                    Scan successful
+                  </p>
+
+                  <h3
+                    className="mt-2 pr-8 text-2xl font-black tracking-tight text-[#241000]"
+                  >
+                    {successResult.attendee?.name || "Attendee"}
+                  </h3>
+
+                  <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl bg-[#fffaf7] p-4">
+                      <p className="text-xs font-bold text-[#241000]/45">
+                        Registration
+                      </p>
+                      <p className="mt-1 text-sm font-black">
+                        {successResult.attendee?.registrationNumber || "—"}
+                      </p>
+                    </div>
+
+                    <div className="rounded-xl bg-[#fffaf7] p-4">
+                      <p className="text-xs font-bold text-[#241000]/45">
+                        Category
+                      </p>
+                      <p className="mt-1 text-sm font-black">
+                        {successResult.attendee?.category || "—"}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-3 rounded-xl bg-[#fffaf7] p-4">
+                    <p className="text-xs font-bold text-[#241000]/45">
+                      Collected
+                    </p>
+                    <p className="mt-1 text-sm font-black">
+                      {successResult.item?.name || selectedItem?.name || "—"}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-[#241000]/45">
+                      {successResult.day?.name || selectedDay?.name || ""}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 rounded-xl bg-emerald-50 p-4">
+                    <p className="text-xs font-bold text-emerald-700">
+                      Scanned successfully at
+                    </p>
+                    <p className="mt-1 text-lg font-black text-emerald-900">
+                      {formatScanTime(successResult.scannedAt) || "Just now"}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-emerald-800/65">
+                      {formatScanDateTime(successResult.scannedAt)}
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleNextScan}
+                    className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-3.5 text-sm font-black text-white shadow-lg shadow-[#EA580C]/20 transition hover:bg-[#c94b08]"
+                  >
+                    <ScanLine className="h-4 w-4" />
+                    Scan Next Attendee
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-50">
+                    <XCircle className="h-9 w-9 text-amber-600" />
+                  </div>
+
+                  <p className="mt-5 text-xs font-black uppercase tracking-[0.18em] text-amber-600">
+                    Already scanned
+                  </p>
+
+                  <h3
+                    className="mt-2 pr-8 text-2xl font-black tracking-tight text-[#241000]"
+                  >
+                    {duplicateResult?.attendee?.name || "Attendee"}
+                  </h3>
+
+                  <div className="mt-5 rounded-xl bg-[#fffaf7] p-4">
+                    <p className="text-xs font-bold text-[#241000]/45">
+                      Registration
+                    </p>
+                    <p className="mt-1 text-sm font-black">
+                      {duplicateResult?.attendee?.registrationNumber || "—"}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 rounded-xl bg-[#fffaf7] p-4">
+                    <p className="text-xs font-bold text-[#241000]/45">
+                      Module
+                    </p>
+                    <p className="mt-1 text-sm font-black">
+                      {duplicateResult?.item?.name || selectedItem?.name || "—"}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-[#241000]/45">
+                      {duplicateResult?.day?.name || selectedDay?.name || ""}
+                    </p>
+                  </div>
+
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                    <p className="text-xs font-bold text-amber-700">
+                      Last scanned at
+                    </p>
+                    <p className="mt-1 text-lg font-black text-amber-900">
+                      {formatScanTime(duplicateResult?.scannedAt) || "Time unavailable"}
+                    </p>
+                    <p className="mt-1 text-xs font-semibold text-amber-800/65">
+                      {formatScanDateTime(duplicateResult?.scannedAt) || "Previous scan time was not returned."}
+                    </p>
+                  </div>
+
+                  <div className="mt-4 rounded-xl bg-[#fffaf7] p-4">
+                    <p className="text-sm leading-6 text-[#241000]/60">
+                      This attendee has already been recorded for this module on this day. No new scan was created.
+                    </p>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleNextScan}
+                    className="mt-6 flex w-full items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-3.5 text-sm font-black text-white shadow-lg shadow-[#EA580C]/20 transition hover:bg-[#c94b08]"
+                  >
+                    <ScanLine className="h-4 w-4" />
+                    Scan Next Person
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </main>
   );

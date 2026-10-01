@@ -91,22 +91,6 @@ const ScanRecordSchema =
     },
   );
 
-/*
- * IMPORTANT
- *
- * One attendee can only be scanned once
- * for a particular event + day + item.
- *
- * Example:
- *
- * Event A
- *   Day 1
- *     Lunch
- *       Attendee 001  ← allowed once
- *
- * A second scan of the same attendee
- * for Day 1 + Lunch will be rejected.
- */
 ScanRecordSchema.index(
   {
     eventId: 1,
