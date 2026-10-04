@@ -10,6 +10,7 @@ import {
   CalendarDays,
   Check,
   FileText,
+  KeyRound,
   Loader2,
   MapPin,
   Save,
@@ -21,6 +22,7 @@ type EventStatus = "draft" | "active";
 
 interface EventFormData {
   name: string;
+  code: string;
   description: string;
   location: string;
   startDate: string;
@@ -30,6 +32,7 @@ interface EventFormData {
 
 const initialForm: EventFormData = {
   name: "",
+  code: "",
   description: "",
   location: "",
   startDate: "",
@@ -53,6 +56,13 @@ function formatDate(date: string) {
   });
 }
 
+function normalizeEventCode(value: string) {
+  return value
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 30);
+}
+
 export default function CreateEventPage() {
   const router = useRouter();
 
@@ -74,6 +84,10 @@ export default function CreateEventPage() {
     }));
   }
 
+  function handleCodeChange(value: string) {
+    updateField("code", normalizeEventCode(value));
+  }
+
   async function handleSubmit(
     event: FormEvent<HTMLFormElement>,
   ) {
@@ -81,8 +95,25 @@ export default function CreateEventPage() {
 
     setError("");
 
-    if (!form.name.trim()) {
+    const eventName = form.name.trim();
+    const eventCode = normalizeEventCode(form.code);
+
+    if (!eventName) {
       setError("Event name is required.");
+      return;
+    }
+
+    if (!eventCode) {
+      setError(
+        "Event code is required. Please create a code for public event access.",
+      );
+      return;
+    }
+
+    if (eventCode.length < 3) {
+      setError(
+        "Event code must contain at least 3 characters.",
+      );
       return;
     }
 
@@ -106,7 +137,8 @@ export default function CreateEventPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          name: form.name.trim(),
+          name: eventName,
+          code: eventCode,
           description: form.description.trim(),
           location: form.location.trim(),
           startDate: form.startDate || undefined,
@@ -280,6 +312,72 @@ export default function CreateEventPage() {
                       {form.name.length}/150
                     </span>
                   </div>
+                </div>
+
+                {/* Event Code */}
+                <div>
+                  <div className="flex items-center justify-between gap-4">
+                    <label
+                      htmlFor="event-code"
+                      className="mb-2 block text-sm font-semibold"
+                    >
+                      Event code
+                      <span className="ml-1 text-[#EA580C]">
+                        *
+                      </span>
+                    </label>
+
+                    <span className="mb-2 text-[10px] font-bold uppercase tracking-[0.12em] text-stone-400">
+                      Public Access
+                    </span>
+                  </div>
+
+                  <div className="relative">
+                    <KeyRound className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-[#EA580C]" />
+
+                    <input
+                      id="event-code"
+                      type="text"
+                      value={form.code}
+                      onChange={(event) =>
+                        handleCodeChange(
+                          event.target.value,
+                        )
+                      }
+                      placeholder="e.g. RSACP2026"
+                      required
+                      minLength={3}
+                      maxLength={30}
+                      autoCapitalize="characters"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="h-13 w-full rounded-xl border border-orange-200 bg-orange-50/30 pl-11 pr-16 text-sm font-bold tracking-[0.08em] outline-none transition placeholder:font-normal placeholder:tracking-normal placeholder:text-stone-400 focus:border-[#EA580C] focus:bg-white focus:ring-4 focus:ring-orange-500/10"
+                    />
+
+                    <span className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-[10px] font-bold text-stone-400">
+                      {form.code.length}/30
+                    </span>
+                  </div>
+
+                  <p className="mt-2 text-xs leading-5 text-stone-400">
+                    Attendees and event staff will use this code
+                    to enter the public event portal. Letters
+                    and numbers only.
+                  </p>
+
+                  {form.code && (
+                    <div className="mt-3 flex items-center gap-2 rounded-xl border border-orange-100 bg-orange-50/60 px-3.5 py-2.5">
+                      <KeyRound className="h-3.5 w-3.5 text-[#EA580C]" />
+
+                      <span className="text-[11px] font-medium text-stone-500">
+                        Public access code:
+                      </span>
+
+                      <span className="text-xs font-extrabold tracking-[0.12em] text-[#241000]">
+                        {form.code}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Description */}
@@ -594,6 +692,15 @@ export default function CreateEventPage() {
                       <span className="truncate">
                         {form.location.trim() ||
                           "Event location"}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-xs text-white/70">
+                      <KeyRound className="h-3.5 w-3.5 text-orange-300" />
+
+                      <span className="truncate">
+                        {form.code ||
+                          "Public event code"}
                       </span>
                     </div>
                   </div>

@@ -3,6 +3,9 @@ import mongoose from "mongoose";
 
 import { connectDB } from "@/lib/mongodb";
 import Event from "@/models/Event";
+import {
+  getPublicEventSession,
+} from "@/lib/publicEventAuth";
 
 interface RouteContext {
   params: Promise<{
@@ -11,20 +14,22 @@ interface RouteContext {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ) {
   try {
-    const { publicId } = await context.params;
+    const { publicId } =
+      await context.params;
 
-    const identifier = publicId.trim();
+    const identifier =
+      publicId.trim();
 
     if (!identifier) {
       return NextResponse.json(
         {
           success: false,
           message:
-            "Public event identifier is required.",
+            "Public event ID is required.",
         },
         {
           status: 400,
@@ -32,48 +37,65 @@ export async function GET(
       );
     }
 
+    /*
+     * --------------------------------------------------
+     * PUBLIC EVENT AUTHENTICATION
+     * --------------------------------------------------
+     */
+
+    const publicSession =
+      await getPublicEventSession(
+        request,
+        identifier,
+      );
+
+    if (!publicSession) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "PUBLIC_AUTH_REQUIRED",
+          message:
+            "Event authentication is required.",
+        },
+        {
+          status: 401,
+        },
+      );
+    }
+
     await connectDB();
 
-    /*
-     * First find the event using the permanent
-     * publicId generated when the event was created.
-     */
-    let event = await Event.findOne({
-      publicId: identifier,
-    })
-      .select(
-        "name publicId description startDate endDate location status attendeeCount badgeCount",
-      )
-      .lean();
-
-    /*
-     * Backward compatibility:
-     *
-     * If an older public URL contains a MongoDB
-     * ObjectId, allow it to resolve as well.
-     */
-    if (
-      !event &&
-      mongoose.Types.ObjectId.isValid(identifier)
-    ) {
-      event = await Event.findById(identifier)
+    let event =
+      await Event.findOne({
+        publicId: identifier,
+      })
         .select(
           "name publicId description startDate endDate location status attendeeCount badgeCount",
         )
         .lean();
+
+    /*
+     * Keep the existing ObjectId fallback.
+     */
+    if (
+      !event &&
+      mongoose.Types.ObjectId.isValid(
+        identifier,
+      )
+    ) {
+      event =
+        await Event.findById(identifier)
+          .select(
+            "name publicId description startDate endDate location status attendeeCount badgeCount",
+          )
+          .lean();
     }
 
     if (!event) {
-      console.error(
-        "❌ Public event not found:",
-        identifier,
-      );
-
       return NextResponse.json(
         {
           success: false,
-          message:
-            "Event not found. The public event link may be invalid.",
+          message: "Event not found.",
         },
         {
           status: 404,
@@ -82,12 +104,37 @@ export async function GET(
     }
 
     /*
-     * Older events may not have a publicId.
-     * Create one automatically if necessary.
+     * --------------------------------------------------
+     * VERIFY SESSION BELONGS TO THIS EVENT
+     * --------------------------------------------------
      */
+
+    if (
+      publicSession.eventId !==
+      event._id.toString()
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "EVENT_SESSION_MISMATCH",
+          message:
+            "This event session does not belong to the requested event.",
+        },
+        {
+          status: 403,
+        },
+      );
+    }
+
     let resolvedPublicId =
       event.publicId ?? "";
 
+    /*
+     * Normally every newly-created event should already
+     * have a publicId.
+     *
+     * Keep the legacy fallback for older events.
+     */
     if (!resolvedPublicId) {
       resolvedPublicId =
         new mongoose.Types.ObjectId().toString();
@@ -98,56 +145,63 @@ export async function GET(
         },
         {
           $set: {
-            publicId: resolvedPublicId,
+            publicId:
+              resolvedPublicId,
           },
         },
       );
     }
 
     /*
-     * IMPORTANT:
-     *
-     * The public scanner expects the event
-     * inside `data`.
+     * The session itself was authenticated against the
+     * URL publicId, so ensure the resolved event publicId
+     * is also consistent.
      */
+    if (
+      publicSession.publicId !==
+      resolvedPublicId
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          code: "EVENT_SESSION_MISMATCH",
+          message:
+            "The event session is not valid for this event.",
+        },
+        {
+          status: 403,
+        },
+      );
+    }
+
     return NextResponse.json({
       success: true,
-
       data: {
         _id: event._id.toString(),
-
         id: event._id.toString(),
-
         name: event.name,
-
-        publicId: resolvedPublicId,
-
+        publicId:
+          resolvedPublicId,
         description:
           event.description ?? "",
-
         startDate: event.startDate
           ? event.startDate.toISOString()
           : undefined,
-
         endDate: event.endDate
           ? event.endDate.toISOString()
           : undefined,
-
         location:
           event.location ?? "",
-
         status: event.status,
-
         attendeeCount:
           event.attendeeCount ?? 0,
-
         badgeCount:
           event.badgeCount ?? 0,
       },
     });
   } catch (error) {
     console.error(
-      "❌ Public event API error:",
+      "Public event API error:",
       error,
     );
 
@@ -155,7 +209,7 @@ export async function GET(
       {
         success: false,
         message:
-          "Unable to load public event.",
+          "Unable to load event.",
       },
       {
         status: 500,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { connectDB } from "@/lib/mongodb";
+import { getPublicEventSession } from "@/lib/publicEventAuth";
 
 import Event from "@/models/Event";
 import Attendee from "@/models/Attendee";
@@ -18,21 +19,15 @@ function jsonResponse(
   return NextResponse.json(body, {
     status,
     headers: {
-      "Cache-Control":
-        "private, no-store, max-age=0",
-      "X-Content-Type-Options":
-        "nosniff",
-      "Referrer-Policy":
-        "no-referrer",
+      "Cache-Control": "private, no-store, max-age=0",
+      "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "no-referrer",
     },
   });
 }
 
 function escapeRegex(value: string): string {
-  return value.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    "\\$&",
-  );
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 export async function GET(
@@ -40,11 +35,9 @@ export async function GET(
   context: RouteContext,
 ) {
   try {
-    const { publicId } =
-      await context.params;
+    const { publicId } = await context.params;
 
-    const normalizedPublicId =
-      publicId?.trim();
+    const normalizedPublicId = publicId?.trim();
 
     if (
       !normalizedPublicId ||
@@ -53,22 +46,49 @@ export async function GET(
     ) {
       return jsonResponse(
         {
-          message:
-            "Invalid public link.",
+          success: false,
+          message: "Invalid public link.",
         },
         400,
+      );
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * PUBLIC EVENT AUTHENTICATION
+     * ---------------------------------------------------------
+     *
+     * The public event must be authenticated using the
+     * separate public-event session.
+     *
+     * This is intentionally NOT the admin NextAuth session.
+     */
+    const publicSession =
+      await getPublicEventSession(
+        request,
+        normalizedPublicId,
+      );
+
+    if (!publicSession) {
+      return jsonResponse(
+        {
+          success: false,
+          message:
+            "Public event authentication is required.",
+          code: "PUBLIC_AUTH_REQUIRED",
+        },
+        401,
       );
     }
 
     await connectDB();
 
     /*
-     * Find the event using the public URL ID.
+     * Find the event using the permanent public ID.
      */
-    const event =
-      await Event.findOne({
-        publicId: normalizedPublicId,
-      }).lean();
+    const event = await Event.findOne({
+      publicId: normalizedPublicId,
+    }).lean();
 
     if (!event) {
       return jsonResponse(
@@ -81,6 +101,61 @@ export async function GET(
       );
     }
 
+    /*
+     * ---------------------------------------------------------
+     * EVENT SESSION MATCH
+     * ---------------------------------------------------------
+     *
+     * Prevent a valid session for Event A from being used
+     * against Event B.
+     */
+    if (
+      publicSession.eventId !==
+      event._id.toString()
+    ) {
+      return jsonResponse(
+        {
+          success: false,
+          message:
+            "This public event session does not belong to this event.",
+          code: "EVENT_SESSION_MISMATCH",
+        },
+        403,
+      );
+    }
+
+    /*
+     * Also verify the public ID stored in the session.
+     */
+    if (
+      publicSession.publicId !==
+      normalizedPublicId
+    ) {
+      return jsonResponse(
+        {
+          success: false,
+          message:
+            "Invalid public event session.",
+          code: "INVALID_PUBLIC_SESSION",
+        },
+        403,
+      );
+    }
+
+    /*
+     * Do not expose draft events through the public portal.
+     */
+    if (event.status === "draft") {
+      return jsonResponse(
+        {
+          success: false,
+          message:
+            "This event is not currently available.",
+        },
+        403,
+      );
+    }
+
     const { searchParams } =
       new URL(request.url);
 
@@ -88,16 +163,14 @@ export async function GET(
       searchParams.get("q")?.trim() || "";
 
     /*
-     * If the public page is opened without
-     * a search query, return only event details.
+     * If the public page is opened without a
+     * search query, return only event details.
      */
     if (!query) {
       return jsonResponse({
         success: true,
         event: {
-          name: String(
-            event.name ?? "",
-          ),
+          name: String(event.name ?? ""),
           description: String(
             event.description ?? "",
           ),
@@ -112,8 +185,8 @@ export async function GET(
     if (query.length > 100) {
       return jsonResponse(
         {
-          message:
-            "Search query is too long.",
+          success: false,
+          message: "Search query is too long.",
         },
         400,
       );
@@ -127,8 +200,7 @@ export async function GET(
     /*
      * IMPORTANT:
      *
-     * Attendee does NOT have a "status"
-     * field.
+     * Attendee does NOT have a "status" field.
      *
      * BadgeFlow uses:
      *
@@ -139,9 +211,7 @@ export async function GET(
     const attendees =
       await Attendee.find({
         eventId: event._id,
-
         badgeGenerated: true,
-
         $or: [
           {
             registrationNumber: regex,
@@ -165,11 +235,8 @@ export async function GET(
 
     return jsonResponse({
       success: true,
-
       event: {
-        name: String(
-          event.name ?? "",
-        ),
+        name: String(event.name ?? ""),
         description: String(
           event.description ?? "",
         ),
@@ -177,7 +244,6 @@ export async function GET(
           event.location ?? "",
         ),
       },
-
       attendees,
     });
   } catch (error) {
@@ -189,8 +255,7 @@ export async function GET(
     return jsonResponse(
       {
         success: false,
-        message:
-          "Unable to search badges.",
+        message: "Unable to search badges.",
       },
       500,
     );

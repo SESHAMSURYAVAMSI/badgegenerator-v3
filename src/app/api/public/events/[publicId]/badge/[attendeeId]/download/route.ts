@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import QRCode from "qrcode";
 
 import { connectDB } from "@/lib/mongodb";
+import { getPublicEventSession } from "@/lib/publicEventAuth";
+
 import Event from "@/models/Event";
 import Attendee from "@/models/Attendee";
 import BadgeConfig from "@/models/BadgeConfig";
@@ -34,7 +36,7 @@ function safeFileName(value: string): string {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ) {
   try {
@@ -43,9 +45,16 @@ export async function GET(
       attendeeId,
     } = await context.params;
 
-    if (!publicId || !attendeeId) {
+    const normalizedPublicId =
+      publicId?.trim();
+
+    if (
+      !normalizedPublicId ||
+      !attendeeId
+    ) {
       return NextResponse.json(
         {
+          success: false,
           message:
             "Invalid badge download request.",
         },
@@ -55,23 +64,104 @@ export async function GET(
       );
     }
 
+    /*
+     * ---------------------------------------------------------
+     * PUBLIC EVENT AUTHENTICATION
+     * ---------------------------------------------------------
+     */
+    const publicSession =
+      await getPublicEventSession(
+        request,
+        normalizedPublicId,
+      );
+
+    if (!publicSession) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Public event authentication is required.",
+          code: "PUBLIC_AUTH_REQUIRED",
+        },
+        {
+          status: 401,
+        },
+      );
+    }
+
     await connectDB();
 
     /*
      * Find the event using the public ID.
      */
-    const event = await Event.findOne({
-      publicId: publicId.trim(),
-    }).lean();
+    const event =
+      await Event.findOne({
+        publicId: normalizedPublicId,
+      }).lean();
 
     if (!event) {
       return NextResponse.json(
         {
-          message:
-            "Event not found.",
+          success: false,
+          message: "Event not found.",
         },
         {
           status: 404,
+        },
+      );
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * EVENT SESSION MATCH
+     * ---------------------------------------------------------
+     */
+    if (
+      publicSession.eventId !==
+      event._id.toString()
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "This public event session does not belong to this event.",
+          code: "EVENT_SESSION_MISMATCH",
+        },
+        {
+          status: 403,
+        },
+      );
+    }
+
+    if (
+      publicSession.publicId !==
+      normalizedPublicId
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Invalid public event session.",
+          code: "INVALID_PUBLIC_SESSION",
+        },
+        {
+          status: 403,
+        },
+      );
+    }
+
+    /*
+     * Draft events should never expose public badges.
+     */
+    if (event.status === "draft") {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "This event is not currently available.",
+        },
+        {
+          status: 403,
         },
       );
     }
@@ -87,8 +177,8 @@ export async function GET(
      *
      * badgeGenerated: true
      *
-     * to determine whether a badge is publicly
-     * available.
+     * to determine whether a badge is
+     * publicly available.
      */
     const attendee =
       await Attendee.findOne({
@@ -100,6 +190,7 @@ export async function GET(
     if (!attendee) {
       return NextResponse.json(
         {
+          success: false,
           message:
             "Generated badge not found.",
         },
@@ -121,6 +212,7 @@ export async function GET(
     if (!config) {
       return NextResponse.json(
         {
+          success: false,
           message:
             "Badge configuration not found.",
         },
@@ -144,6 +236,7 @@ export async function GET(
     if (!qrValue) {
       return NextResponse.json(
         {
+          success: false,
           message:
             "QR value is missing for this attendee.",
         },
@@ -210,6 +303,18 @@ export async function GET(
           if (field.id === "category") {
             value =
               attendee.category || "";
+          }
+
+          /*
+           * Medical Council Number
+           */
+          if (
+            field.id ===
+            "medicalCouncilNumber"
+          ) {
+            value =
+              attendee.medicalCouncilNumber ||
+              "";
           }
 
           /*
@@ -341,6 +446,7 @@ export async function GET(
 
     return NextResponse.json(
       {
+        success: false,
         message:
           "Unable to generate badge.",
       },

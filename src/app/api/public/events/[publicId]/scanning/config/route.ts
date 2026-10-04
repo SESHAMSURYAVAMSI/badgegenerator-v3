@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import mongoose from "mongoose";
 
 import { connectDB } from "@/lib/mongodb";
+import { getPublicEventSession } from "@/lib/publicEventAuth";
+
 import Event from "@/models/Event";
 import ScanConfig from "@/models/ScanConfig";
 
@@ -12,13 +14,13 @@ interface RouteContext {
 }
 
 export async function GET(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ) {
   try {
     const { publicId } = await context.params;
 
-    const identifier = publicId.trim();
+    const identifier = publicId?.trim();
 
     if (!identifier) {
       return NextResponse.json(
@@ -33,25 +35,60 @@ export async function GET(
       );
     }
 
+    /*
+     * ---------------------------------------------------------
+     * PUBLIC EVENT AUTHENTICATION
+     * ---------------------------------------------------------
+     *
+     * Scanner configuration is protected just like the
+     * public badge APIs.
+     */
+    const publicSession =
+      await getPublicEventSession(
+        request,
+        identifier,
+      );
+
+    if (!publicSession) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Public event authentication is required.",
+          code: "PUBLIC_AUTH_REQUIRED",
+        },
+        {
+          status: 401,
+        },
+      );
+    }
+
     await connectDB();
 
     /*
      * First resolve using permanent publicId.
      */
-    let event = await Event.findOne({
-      publicId: identifier,
-    }).lean();
+    let event =
+      await Event.findOne({
+        publicId: identifier,
+      }).lean();
 
     /*
      * Backward compatibility for older links.
+     *
+     * The public authentication flow itself still requires
+     * the session publicId to match the requested identifier.
      */
     if (
       !event &&
-      mongoose.Types.ObjectId.isValid(identifier)
-    ) {
-      event = await Event.findById(
+      mongoose.Types.ObjectId.isValid(
         identifier,
-      ).lean();
+      )
+    ) {
+      event =
+        await Event.findById(
+          identifier,
+        ).lean();
     }
 
     if (!event) {
@@ -62,6 +99,65 @@ export async function GET(
         },
         {
           status: 404,
+        },
+      );
+    }
+
+    /*
+     * ---------------------------------------------------------
+     * EVENT SESSION MATCH
+     * ---------------------------------------------------------
+     */
+    if (
+      publicSession.eventId !==
+      event._id.toString()
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "This public event session does not belong to this event.",
+          code: "EVENT_SESSION_MISMATCH",
+        },
+        {
+          status: 403,
+        },
+      );
+    }
+
+    /*
+     * For the normal permanent public route, make sure
+     * the session publicId matches the requested publicId.
+     */
+    if (
+      publicSession.publicId !==
+      identifier
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "Invalid public event session.",
+          code: "INVALID_PUBLIC_SESSION",
+        },
+        {
+          status: 403,
+        },
+      );
+    }
+
+    /*
+     * Draft events must not expose scanning configuration.
+     */
+    if (event.status === "draft") {
+      return NextResponse.json(
+        {
+          success: false,
+          message:
+            "This event is not currently available.",
+        },
+        {
+          status: 403,
         },
       );
     }
@@ -80,7 +176,9 @@ export async function GET(
           success: true,
 
           data: {
-            eventId: event._id.toString(),
+            eventId:
+              event._id.toString(),
+
             days: [],
           },
         },

@@ -1,27 +1,19 @@
-import type { Metadata } from "next";
+import type { ReactNode } from "react";
 
-export const metadata: Metadata = {
-  title: "Find Your Badge | BadgeFlow",
-  description:
-    "Find and download your event badge.",
-  robots: {
-    index: false,
-    follow: false,
-    nocache: true,
-    googleBot: {
-      index: false,
-      follow: false,
-      noimageindex: true,
-      nosnippet: true,
-      noarchive: true,
-    },
-  },
-};
+import PublicPortalHeader from "@/components/public/PublicPortalHeader";
 
-export default function PublicLayout({
+interface PublicPortalLayoutProps {
+  children: ReactNode;
+}
+
+export default function PublicPortalLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
-  return children;
+}: PublicPortalLayoutProps) {
+  return (
+    <div className="min-h-screen bg-[#fffaf7]">
+      <PublicPortalHeader />
+
+      {children}
+    </div>
+  );
 }

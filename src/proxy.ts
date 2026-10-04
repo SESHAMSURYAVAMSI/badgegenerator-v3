@@ -1,29 +1,107 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
 
-export default auth((request) => {
-  const isAuthenticated = Boolean(request.auth);
+import {
+  getPublicEventSessionFromRequest,
+} from "@/lib/publicEventAuth";
 
-  const isDashboardRoute =
-    request.nextUrl.pathname.startsWith("/dashboard");
+export default auth(
+  async (request) => {
+    const pathname =
+      request.nextUrl.pathname;
 
-  if (isDashboardRoute && !isAuthenticated) {
-    const loginUrl = new URL(
-      "/admin-login",
-      request.nextUrl.origin,
-    );
+    const isAuthenticated =
+      Boolean(request.auth);
 
-    loginUrl.searchParams.set(
-      "callbackUrl",
-      request.nextUrl.pathname,
-    );
+    /*
+     * --------------------------------------------------
+     * ADMIN ROUTES
+     * --------------------------------------------------
+     */
 
-    return NextResponse.redirect(loginUrl);
-  }
+    const isDashboardRoute =
+      pathname.startsWith("/dashboard");
 
-  return NextResponse.next();
-});
+    if (
+      isDashboardRoute &&
+      !isAuthenticated
+    ) {
+      const loginUrl =
+        new URL(
+          "/admin-login",
+          request.nextUrl.origin,
+        );
+
+      loginUrl.searchParams.set(
+        "callbackUrl",
+        pathname,
+      );
+
+      return NextResponse.redirect(
+        loginUrl,
+      );
+    }
+
+    /*
+     * --------------------------------------------------
+     * PUBLIC EVENT ROUTES
+     * --------------------------------------------------
+     */
+
+    const publicMatch =
+      pathname.match(
+        /^\/public\/([^/]+)(?:\/(.*))?$/,
+      );
+
+    if (publicMatch) {
+      const publicId =
+        publicMatch[1];
+
+      const remainingPath =
+        publicMatch[2] ?? "";
+
+      const isLoginPage =
+        remainingPath === "login";
+
+      /*
+       * The login page itself must remain public.
+       */
+
+      if (!isLoginPage) {
+        const publicSession =
+          await getPublicEventSessionFromRequest(
+            request,
+            publicId,
+          );
+
+        if (!publicSession) {
+          const loginUrl =
+            new URL(
+              `/public/${encodeURIComponent(
+                publicId,
+              )}/login`,
+              request.nextUrl.origin,
+            );
+
+          loginUrl.searchParams.set(
+            "callbackUrl",
+            pathname,
+          );
+
+          return NextResponse.redirect(
+            loginUrl,
+          );
+        }
+      }
+    }
+
+    return NextResponse.next();
+  },
+);
 
 export const config = {
-  matcher: ["/dashboard/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/public/:path*",
+  ],
 };

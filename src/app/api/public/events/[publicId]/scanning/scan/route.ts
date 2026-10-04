@@ -6,6 +6,7 @@ import Attendee from "@/models/Attendee";
 import ScanConfig from "@/models/ScanConfig";
 import ScanRecord from "@/models/ScanRecord";
 import ScanAttempt from "@/models/ScanAttempt";
+import { getPublicEventSession } from "@/lib/publicEventAuth";
 
 interface RouteContext {
   params: Promise<{
@@ -25,9 +26,56 @@ export async function POST(
   context: RouteContext,
 ) {
   try {
-    await connectDB();
-
     const { publicId } = await context.params;
+
+    const normalizedPublicId = publicId.trim();
+
+    if (!normalizedPublicId) {
+      return NextResponse.json(
+        {
+          success: false,
+          duplicate: false,
+          message: "Public event ID is required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    /*
+     * --------------------------------------------------
+     * PUBLIC EVENT AUTHENTICATION
+     * --------------------------------------------------
+     *
+     * The public scanner is protected separately from
+     * the admin authentication system.
+     *
+     * The session is also tied to the publicId so a
+     * session for one event cannot be reused for another.
+     */
+
+    const publicSession = await getPublicEventSession(
+      request,
+      normalizedPublicId,
+    );
+
+    if (!publicSession) {
+      return NextResponse.json(
+        {
+          success: false,
+          duplicate: false,
+          code: "PUBLIC_AUTH_REQUIRED",
+          message:
+            "Event authentication is required before scanning.",
+        },
+        {
+          status: 401,
+        },
+      );
+    }
+
+    await connectDB();
 
     const body =
       (await request.json()) as ScanRequestBody;
@@ -57,7 +105,7 @@ export async function POST(
      */
 
     const event = await Event.findOne({
-      publicId: publicId.trim(),
+      publicId: normalizedPublicId,
     }).lean();
 
     if (!event) {
@@ -75,6 +123,36 @@ export async function POST(
         },
         {
           status: 404,
+        },
+      );
+    }
+
+    /*
+     * --------------------------------------------------
+     * VERIFY SESSION BELONGS TO THIS EVENT
+     * --------------------------------------------------
+     *
+     * This is an additional server-side protection.
+     *
+     * Even if someone somehow obtains a valid public
+     * session cookie, it cannot be used for a different
+     * event.
+     */
+
+    if (
+      publicSession.eventId !==
+      event._id.toString()
+    ) {
+      return NextResponse.json(
+        {
+          success: false,
+          duplicate: false,
+          code: "EVENT_SESSION_MISMATCH",
+          message:
+            "This event session does not belong to the requested event.",
+        },
+        {
+          status: 403,
         },
       );
     }
@@ -326,8 +404,7 @@ export async function POST(
               email: attendee.email,
               registrationNumber:
                 attendee.registrationNumber,
-              category:
-                attendee.category,
+              category: attendee.category,
             },
 
             event: {
@@ -425,8 +502,7 @@ export async function POST(
               email: attendee.email,
               registrationNumber:
                 attendee.registrationNumber,
-              category:
-                attendee.category,
+              category: attendee.category,
             },
 
             event: {
@@ -515,8 +591,7 @@ export async function POST(
                 email: attendee.email,
                 registrationNumber:
                   attendee.registrationNumber,
-                category:
-                  attendee.category,
+                category: attendee.category,
               },
 
               event: {

@@ -19,18 +19,13 @@ function createSlug(value: string) {
     .replace(/^-+|-+$/g, "");
 }
 
-function createEventCode(value: string) {
-  const clean = value
+function normalizeEventCode(
+  value: string,
+) {
+  return value
+    .trim()
     .replace(/[^a-zA-Z0-9]/g, "")
-    .toUpperCase()
-    .slice(0, 6);
-
-  const random = crypto
-    .randomBytes(3)
-    .toString("hex")
     .toUpperCase();
-
-  return `${clean || "EVENT"}-${random}`;
 }
 
 export async function GET() {
@@ -70,7 +65,8 @@ export async function GET() {
 
     return NextResponse.json(
       {
-        message: "Failed to fetch events.",
+        message:
+          "Failed to fetch events.",
       },
       {
         status: 500,
@@ -102,6 +98,7 @@ export async function POST(
 
     const {
       name,
+      code,
       description,
       location,
       startDate,
@@ -115,7 +112,66 @@ export async function POST(
     ) {
       return NextResponse.json(
         {
-          message: "Event name is required.",
+          message:
+            "Event name is required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (
+      typeof code !== "string" ||
+      !code.trim()
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "Event code is required.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    const normalizedCode =
+      normalizeEventCode(code);
+
+    if (!normalizedCode) {
+      return NextResponse.json(
+        {
+          message:
+            "Enter a valid event code.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (
+      normalizedCode.length < 3
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "Event code must contain at least 3 characters.",
+        },
+        {
+          status: 400,
+        },
+      );
+    }
+
+    if (
+      normalizedCode.length > 30
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "Event code cannot exceed 30 characters.",
         },
         {
           status: 400,
@@ -140,6 +196,23 @@ export async function POST(
       );
     }
 
+    const existingCode =
+      await Event.findOne({
+        code: normalizedCode,
+      }).lean();
+
+    if (existingCode) {
+      return NextResponse.json(
+        {
+          message:
+            "This event code is already in use. Please choose another code.",
+        },
+        {
+          status: 409,
+        },
+      );
+    }
+
     let slug = createSlug(name);
 
     if (!slug) {
@@ -149,7 +222,7 @@ export async function POST(
     const existingSlug =
       await Event.findOne({
         slug,
-      });
+      }).lean();
 
     if (existingSlug) {
       slug = `${slug}-${crypto
@@ -157,65 +230,63 @@ export async function POST(
         .toString("hex")}`;
     }
 
-    let code = createEventCode(name);
-
-    while (
-      await Event.exists({
-        code,
-      })
-    ) {
-      code = createEventCode(name);
-    }
-
-    let publicId = createPublicId();
+    let publicId =
+      createPublicId();
 
     while (
       await Event.exists({
         publicId,
       })
     ) {
-      publicId = createPublicId();
+      publicId =
+        createPublicId();
     }
 
-    const event = await Event.create({
-      name: name.trim(),
+    const event =
+      await Event.create({
+        name: name.trim(),
 
-      slug,
+        slug,
 
-      code,
+        code: normalizedCode,
 
-      publicId,
+        publicId,
 
-      description:
-        typeof description === "string"
-          ? description.trim()
-          : "",
+        description:
+          typeof description ===
+          "string"
+            ? description.trim()
+            : "",
 
-      location:
-        typeof location === "string"
-          ? location.trim()
-          : "",
+        location:
+          typeof location ===
+          "string"
+            ? location.trim()
+            : "",
 
-      startDate: startDate
-        ? new Date(startDate)
-        : undefined,
+        startDate: startDate
+          ? new Date(startDate)
+          : undefined,
 
-      endDate: endDate
-        ? new Date(endDate)
-        : undefined,
+        endDate: endDate
+          ? new Date(endDate)
+          : undefined,
 
-      status:
-        status === "active" ||
-        status === "completed"
-          ? status
-          : "draft",
+        status:
+          status === "active" ||
+          status === "completed"
+            ? status
+            : "draft",
 
-      attendeeCount: 0,
+        attendeeCount: 0,
 
-      badgeCount: 0,
+        badgeCount: 0,
 
-      createdBy: session.user.id,
-    });
+        registrationSequence: 0,
+
+        createdBy:
+          session.user.id,
+      });
 
     return NextResponse.json(
       {
@@ -223,7 +294,8 @@ export async function POST(
 
         event,
 
-        publicUrl: `/public/${publicId}`,
+        publicUrl:
+          `/public/${publicId}`,
 
         message:
           "Event created successfully.",
@@ -238,9 +310,27 @@ export async function POST(
       error,
     );
 
+    if (
+      error instanceof Error &&
+      error.message.includes(
+        "duplicate key",
+      )
+    ) {
+      return NextResponse.json(
+        {
+          message:
+            "An event with this code or slug already exists.",
+        },
+        {
+          status: 409,
+        },
+      );
+    }
+
     return NextResponse.json(
       {
-        message: "Failed to create event.",
+        message:
+          "Failed to create event.",
       },
       {
         status: 500,
