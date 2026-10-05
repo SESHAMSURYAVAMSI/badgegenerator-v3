@@ -7,6 +7,8 @@ import {
   useState,
 } from "react";
 
+import jsQR from "jsqr";
+
 import {
   Award,
   Camera,
@@ -95,32 +97,6 @@ interface ScanResponse {
 
     scannedAt?: string;
   };
-}
-
-interface BarcodeDetectorResult {
-  rawValue?: string;
-}
-
-interface BarcodeDetectorInstance {
-  detect(
-    source: HTMLVideoElement,
-  ): Promise<BarcodeDetectorResult[]>;
-}
-
-interface BarcodeDetectorConstructor {
-  new (options?: {
-    formats?: string[];
-  }): BarcodeDetectorInstance;
-
-  getSupportedFormats?: () => Promise<
-    string[]
-  >;
-}
-
-declare global {
-  interface Window {
-    BarcodeDetector?: BarcodeDetectorConstructor;
-  }
 }
 
 type ScanStep =
@@ -217,6 +193,11 @@ export default function PublicScanPage({
 }: Props) {
   const videoRef =
     useRef<HTMLVideoElement | null>(
+      null,
+    );
+
+  const canvasRef =
+    useRef<HTMLCanvasElement | null>(
       null,
     );
 
@@ -640,15 +621,7 @@ export default function PublicScanPage({
 
       if (!navigator.mediaDevices?.getUserMedia) {
         setCameraError(
-          "Camera access is not supported by this browser.",
-        );
-
-        return;
-      }
-
-      if (!window.BarcodeDetector) {
-        setCameraError(
-          "QR scanning is not supported by this browser. Please use Chrome on Android or another supported QR scanner browser.",
+          "Camera access is not supported by this browser. Please use a modern browser with camera access enabled.",
         );
 
         return;
@@ -657,9 +630,11 @@ export default function PublicScanPage({
       try {
         stopCamera();
 
-        const stream =
-          await navigator.mediaDevices.getUserMedia(
-            {
+        let stream: MediaStream;
+
+        try {
+          stream =
+            await navigator.mediaDevices.getUserMedia({
               video: {
                 facingMode: {
                   ideal: "environment",
@@ -672,8 +647,31 @@ export default function PublicScanPage({
                 },
               },
               audio: false,
-            },
+            });
+        } catch (preferredCameraError) {
+          const errorName =
+            preferredCameraError instanceof DOMException
+              ? preferredCameraError.name
+              : "";
+
+          if (
+            errorName === "NotAllowedError" ||
+            errorName === "SecurityError"
+          ) {
+            throw preferredCameraError;
+          }
+
+          console.warn(
+            "Preferred camera constraints failed. Retrying with basic camera access.",
+            preferredCameraError,
           );
+
+          stream =
+            await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false,
+            });
+        }
 
         streamRef.current =
           stream;
@@ -691,25 +689,80 @@ export default function PublicScanPage({
           return;
         }
 
-        videoRef.current.srcObject =
-          stream;
+        const video =
+          videoRef.current;
 
-        await videoRef.current.play();
+        video.setAttribute(
+          "playsinline",
+          "true",
+        );
+
+        video.setAttribute(
+          "webkit-playsinline",
+          "true",
+        );
+
+        video.muted = true;
+        video.srcObject = stream;
+
+        await new Promise<void>((resolve) => {
+          if (video.readyState >= 1) {
+            resolve();
+            return;
+          }
+
+          const handleLoadedMetadata = () => {
+            video.removeEventListener(
+              "loadedmetadata",
+              handleLoadedMetadata,
+            );
+            resolve();
+          };
+
+          video.addEventListener(
+            "loadedmetadata",
+            handleLoadedMetadata,
+            { once: true },
+          );
+        });
+
+        await video.play();
+
+        if (
+          !video.videoWidth ||
+          !video.videoHeight
+        ) {
+          throw new Error(
+            "Camera opened but no video frames are available.",
+          );
+        }
 
         setCameraReady(true);
 
-        const detector =
-          new window.BarcodeDetector({
-            formats: [
-              "qr_code",
-            ],
+        const canvas =
+          canvasRef.current ??
+          document.createElement(
+            "canvas",
+          );
+
+        canvasRef.current = canvas;
+
+        const context =
+          canvas.getContext("2d", {
+            willReadFrequently: true,
           });
+
+        if (!context) {
+          throw new Error(
+            "Unable to initialize the QR scanner.",
+          );
+        }
 
         scanningRef.current =
           true;
 
         const scanFrame =
-          async () => {
+          () => {
             if (
               !scanningRef.current ||
               !videoRef.current
@@ -718,18 +771,78 @@ export default function PublicScanPage({
             }
 
             try {
-              const results =
-                await detector.detect(
-                  videoRef.current,
-                );
+              const currentVideo =
+                videoRef.current;
+
+              const sourceWidth =
+                currentVideo.videoWidth;
+              const sourceHeight =
+                currentVideo.videoHeight;
 
               if (
-                results.length > 0
+                sourceWidth > 0 &&
+                sourceHeight > 0
               ) {
+                /*
+                 * Keep the decode frame reasonably
+                 * small so iPhones, iPads and desktop
+                 * browsers do not spend excessive CPU
+                 * time processing a 1080p/4K stream.
+                 */
+                const maxWidth = 960;
+                const targetWidth =
+                  Math.min(
+                    sourceWidth,
+                    maxWidth,
+                  );
+                const targetHeight =
+                  Math.round(
+                    (sourceHeight /
+                      sourceWidth) *
+                      targetWidth,
+                  );
+
+                if (
+                  canvas.width !==
+                    targetWidth ||
+                  canvas.height !==
+                    targetHeight
+                ) {
+                  canvas.width =
+                    targetWidth;
+                  canvas.height =
+                    targetHeight;
+                }
+
+                context.drawImage(
+                  currentVideo,
+                  0,
+                  0,
+                  targetWidth,
+                  targetHeight,
+                );
+
+                const imageData =
+                  context.getImageData(
+                    0,
+                    0,
+                    targetWidth,
+                    targetHeight,
+                  );
+
+                const code =
+                  jsQR(
+                    imageData.data,
+                    imageData.width,
+                    imageData.height,
+                    {
+                      inversionAttempts:
+                        "attemptBoth",
+                    },
+                  );
+
                 const value =
-                  results[0]
-                    ?.rawValue
-                    ?.trim();
+                  code?.data?.trim();
 
                 if (value) {
                   const now =
@@ -746,16 +859,16 @@ export default function PublicScanPage({
                     !isSameRecentValue &&
                     !processingScanRef.current
                   ) {
-                    await submitScan(
+                    void submitScan(
                       value,
                     );
                   }
                 }
               }
-            } catch (detectError) {
+            } catch (scanError) {
               console.error(
-                "QR detection error:",
-                detectError,
+                "QR frame processing error:",
+                scanError,
               );
             }
 
@@ -764,18 +877,14 @@ export default function PublicScanPage({
             ) {
               animationFrameRef.current =
                 requestAnimationFrame(
-                  () => {
-                    void scanFrame();
-                  },
+                  scanFrame,
                 );
             }
           };
 
         animationFrameRef.current =
           requestAnimationFrame(
-            () => {
-              void scanFrame();
-            },
+            scanFrame,
           );
       } catch (cameraStartError) {
         console.error(
@@ -785,9 +894,36 @@ export default function PublicScanPage({
 
         setCameraReady(false);
 
-        setCameraError(
-          "Camera permission was denied or the camera could not be opened.",
-        );
+        const errorName =
+          cameraStartError instanceof DOMException
+            ? cameraStartError.name
+            : "";
+
+        if (
+          errorName === "NotAllowedError" ||
+          errorName === "SecurityError"
+        ) {
+          setCameraError(
+            "Camera permission was denied. Please allow camera access in your browser settings and try again.",
+          );
+        } else if (
+          errorName === "NotFoundError"
+        ) {
+          setCameraError(
+            "No camera was found on this device.",
+          );
+        } else if (
+          errorName === "NotReadableError" ||
+          errorName === "AbortError"
+        ) {
+          setCameraError(
+            "The camera is already being used by another application. Close other camera apps or browser tabs and try again.",
+          );
+        } else {
+          setCameraError(
+            "The camera could not be opened. Please check your browser camera permissions and try again.",
+          );
+        }
 
         stopCamera();
       }
@@ -1308,9 +1444,15 @@ export default function PublicScanPage({
                 <div className="grid gap-5 lg:grid-cols-[1.25fr_0.75fr]">
                   <div className="overflow-hidden rounded-[2rem] border border-[#241000]/10 bg-[#241000] shadow-2xl shadow-[#241000]/10">
                     <div className="relative aspect-[4/3] overflow-hidden sm:aspect-video">
+                      <canvas
+                        ref={canvasRef}
+                        className="hidden"
+                      />
+
                       <video
                         ref={videoRef}
                         muted
+                        autoPlay
                         playsInline
                         className="h-full w-full object-cover"
                       />
