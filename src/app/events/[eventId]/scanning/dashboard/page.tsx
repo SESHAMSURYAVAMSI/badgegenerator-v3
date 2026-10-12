@@ -1,11 +1,6 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import Link from "next/link";
 
@@ -16,6 +11,8 @@ import {
   CheckCircle2,
   Clock3,
   Copy,
+  Download,
+  FileSpreadsheet,
   Loader2,
   QrCode,
   RefreshCw,
@@ -31,73 +28,109 @@ interface AnalyticsData {
 
   event: {
     id: string;
+
     name: string;
+
     publicId: string | null;
   };
 
   overview: {
     totalAttendees: number;
+
     totalSuccessfulScans: number;
+
     todaySuccessfulScans: number;
+
     uniqueScannedAttendees: number;
+
     unscannedCount: number;
+
     attendancePercentage: number;
 
     totalAttempts: number;
+
     todayAttempts: number;
 
     duplicateAttempts: number;
+
     invalidQrAttempts: number;
+
     invalidDayAttempts: number;
+
     invalidItemAttempts: number;
   };
 
   dayStats: Array<{
     dayId: string;
+
     dayName: string;
+
     total: number;
   }>;
 
   itemStats: Array<{
     itemId: string;
+
     itemName: string;
+
     total: number;
   }>;
 
   recentScans: Array<{
     id: string;
+
     attendeeId: string;
+
     registrationNumber: string;
+
     attendeeName: string;
+
     dayId: string;
+
     dayName: string;
+
     itemId: string;
+
     itemName: string;
+
     scannedAt: string;
   }>;
 
   recentDuplicates: Array<{
     id: string;
+
     attendeeId: string | null;
+
     registrationNumber: string;
+
     attendeeName: string;
+
     dayName: string;
+
     itemName: string;
+
     scannedAt: string;
   }>;
 
   recentInvalidAttempts: Array<{
     id: string;
+
     status: string;
+
     qrValue: string;
+
     registrationNumber: string;
+
     dayName: string;
+
     itemName: string;
+
     scannedAt: string;
   }>;
 
   hourlyScans: Array<{
     hour: number;
+
     total: number;
   }>;
 
@@ -110,35 +143,35 @@ interface PageProps {
   }>;
 }
 
-function formatTime(
-  value: string,
-): string {
+function formatTime(value: string): string {
   return new Date(value).toLocaleTimeString(
     [],
+
     {
       hour: "2-digit",
+
       minute: "2-digit",
     },
   );
 }
 
-function formatDateTime(
-  value: string,
-): string {
+function formatDateTime(value: string): string {
   return new Date(value).toLocaleString(
     [],
+
     {
       day: "2-digit",
+
       month: "short",
+
       hour: "2-digit",
+
       minute: "2-digit",
     },
   );
 }
 
-function getAttemptLabel(
-  status: string,
-): string {
+function getAttemptLabel(status: string): string {
   switch (status) {
     case "invalid_qr":
       return "Invalid QR";
@@ -157,33 +190,31 @@ function getAttemptLabel(
   }
 }
 
-export default function ScanningDashboardPage({
-  params,
-}: PageProps) {
-  const [eventId, setEventId] =
-    useState("");
+export default function ScanningDashboardPage({ params }: PageProps) {
+  const [eventId, setEventId] = useState("");
 
-  const [data, setData] =
-    useState<AnalyticsData | null>(
-      null,
-    );
+  const [data, setData] = useState<AnalyticsData | null>(null);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [loading, setLoading] = useState(true);
 
-  const [refreshing, setRefreshing] =
-    useState(false);
+  const [refreshing, setRefreshing] = useState(false);
 
-  const [error, setError] =
-    useState("");
+  const [error, setError] = useState("");
 
-  const [lastUpdated, setLastUpdated] =
-    useState<Date | null>(null);
+  const [exportingFormat, setExportingFormat] = useState<"xlsx" | "csv" | null>(
+    null,
+  );
+
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   /*
+
    * --------------------------------------------------
+
    * RESOLVE EVENT ID
+
    * --------------------------------------------------
+
    */
 
   useEffect(() => {
@@ -191,9 +222,7 @@ export default function ScanningDashboardPage({
 
     params.then((resolvedParams) => {
       if (active) {
-        setEventId(
-          resolvedParams.eventId,
-        );
+        setEventId(resolvedParams.eventId);
       }
     });
 
@@ -203,64 +232,69 @@ export default function ScanningDashboardPage({
   }, [params]);
 
   /*
+
    * --------------------------------------------------
+
    * LOAD ANALYTICS
+
    * --------------------------------------------------
+
    */
 
-  const loadAnalytics =
-    useCallback(
-      async (
-        showSpinner = true,
-      ) => {
-        if (!eventId) return;
+  const loadAnalytics = useCallback(
+    async (showSpinner = true) => {
+      if (!eventId) return;
 
-        if (showSpinner) {
-          setRefreshing(true);
+      if (showSpinner) {
+        setRefreshing(true);
+      }
+
+      try {
+        const response = await fetch(
+          `/api/events/${eventId}/scanning/analytics`,
+
+          {
+            cache: "no-store",
+          },
+        );
+
+        const result = (await response.json()) as AnalyticsData & {
+          message?: string;
+        };
+
+        if (!response.ok) {
+          throw new Error(result.message || "Unable to load analytics.");
         }
 
-        try {
-          const response =
-            await fetch(
-              `/api/events/${eventId}/scanning/analytics`,
-              {
-                cache: "no-store",
-              },
-            );
+        setData(result);
 
-          const result =
-            (await response.json()) as AnalyticsData & {
-              message?: string;
-            };
+        setError("");
 
-          if (!response.ok) {
-            throw new Error(
-              result.message ||
-                "Unable to load analytics.",
-            );
-          }
+        setLastUpdated(new Date());
+      } catch (requestError) {
+        setError(
+          requestError instanceof Error
+            ? requestError.message
+            : "Unable to load analytics.",
+        );
+      } finally {
+        setLoading(false);
 
-          setData(result);
-          setError("");
-          setLastUpdated(new Date());
-        } catch (requestError) {
-          setError(
-            requestError instanceof Error
-              ? requestError.message
-              : "Unable to load analytics.",
-          );
-        } finally {
-          setLoading(false);
-          setRefreshing(false);
-        }
-      },
-      [eventId],
-    );
+        setRefreshing(false);
+      }
+    },
+
+    [eventId],
+  );
 
   /*
+
    * --------------------------------------------------
+
    * INITIAL LOAD
+
    * --------------------------------------------------
+
    */
 
   useEffect(() => {
@@ -270,58 +304,106 @@ export default function ScanningDashboardPage({
   }, [eventId, loadAnalytics]);
 
   /*
+
    * --------------------------------------------------
+
    * LIVE REFRESH
+
    * --------------------------------------------------
+
    */
 
   useEffect(() => {
     if (!eventId) return;
 
-    const interval =
-      window.setInterval(() => {
-        void loadAnalytics(false);
-      }, 10_000);
+    const interval = window.setInterval(() => {
+      void loadAnalytics(false);
+    }, 10_000);
 
     return () => {
-      window.clearInterval(
-        interval,
-      );
+      window.clearInterval(interval);
     };
   }, [eventId, loadAnalytics]);
 
-  const maxItemCount =
-    useMemo(() => {
-      if (!data?.itemStats.length) {
-        return 1;
+  const downloadScanReport = useCallback(
+    async (format: "xlsx" | "csv") => {
+      if (!eventId || exportingFormat) return;
+
+      setExportingFormat(format);
+      setError("");
+
+      try {
+        const response = await fetch(
+          `/api/events/${encodeURIComponent(eventId)}/scanning/export?format=${format}`,
+          { method: "GET", cache: "no-store" },
+        );
+
+        if (!response.ok) {
+          const result = (await response.json().catch(() => null)) as {
+            message?: string;
+          } | null;
+          throw new Error(result?.message || "Unable to download scan report.");
+        }
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        const extension = format === "xlsx" ? "xlsx" : "csv";
+
+        link.href = objectUrl;
+        link.download = `${(data?.event.name || "event")
+          .trim()
+          .replace(/[^a-zA-Z0-9_-]+/g, "-")
+          .replace(/-+/g, "-")}-successful-scan-report.${extension}`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(objectUrl);
+      } catch (downloadError) {
+        setError(
+          downloadError instanceof Error
+            ? downloadError.message
+            : "Unable to download scan report.",
+        );
+      } finally {
+        setExportingFormat(null);
       }
+    },
+    [data?.event.name, eventId, exportingFormat],
+  );
 
-      return Math.max(
-        ...data.itemStats.map(
-          (item) => item.total,
-        ),
-        1,
-      );
-    }, [data?.itemStats]);
+  const maxItemCount = useMemo(() => {
+    if (!data?.itemStats.length) {
+      return 1;
+    }
 
-  const maxDayCount =
-    useMemo(() => {
-      if (!data?.dayStats.length) {
-        return 1;
-      }
+    return Math.max(
+      ...data.itemStats.map((item) => item.total),
 
-      return Math.max(
-        ...data.dayStats.map(
-          (day) => day.total,
-        ),
-        1,
-      );
-    }, [data?.dayStats]);
+      1,
+    );
+  }, [data?.itemStats]);
+
+  const maxDayCount = useMemo(() => {
+    if (!data?.dayStats.length) {
+      return 1;
+    }
+
+    return Math.max(
+      ...data.dayStats.map((day) => day.total),
+
+      1,
+    );
+  }, [data?.dayStats]);
 
   /*
+
    * --------------------------------------------------
+
    * LOADING
+
    * --------------------------------------------------
+
    */
 
   if (loading) {
@@ -341,9 +423,13 @@ export default function ScanningDashboardPage({
   }
 
   /*
+
    * --------------------------------------------------
+
    * ERROR
+
    * --------------------------------------------------
+
    */
 
   if (!data) {
@@ -355,7 +441,6 @@ export default function ScanningDashboardPage({
             className="mb-8 inline-flex items-center gap-2 text-sm font-semibold text-[#EA580C]"
           >
             <ArrowLeft className="h-4 w-4" />
-
             Back to Events
           </Link>
 
@@ -364,9 +449,7 @@ export default function ScanningDashboardPage({
               <XCircle className="h-6 w-6 text-red-500" />
             </div>
 
-            <h1 className="text-xl font-bold">
-              Unable to load dashboard
-            </h1>
+            <h1 className="text-xl font-bold">Unable to load dashboard</h1>
 
             <p className="mt-2 text-sm text-[#795548]">
               {error ||
@@ -375,13 +458,10 @@ export default function ScanningDashboardPage({
 
             <button
               type="button"
-              onClick={() =>
-                void loadAnalytics(true)
-              }
+              onClick={() => void loadAnalytics(true)}
               className="mt-6 inline-flex items-center gap-2 rounded-xl bg-[#EA580C] px-4 py-2.5 text-sm font-semibold text-white"
             >
               <RefreshCw className="h-4 w-4" />
-
               Try again
             </button>
           </div>
@@ -393,6 +473,7 @@ export default function ScanningDashboardPage({
   return (
     <main className="min-h-screen bg-[#fffaf7] text-[#241000]">
       {/* Ambient background */}
+
       <div className="pointer-events-none fixed inset-0 -z-0 overflow-hidden">
         <div className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-orange-200/30 blur-3xl" />
 
@@ -409,7 +490,6 @@ export default function ScanningDashboardPage({
               className="mb-4 inline-flex items-center gap-2 text-sm font-semibold text-[#EA580C]"
             >
               <ArrowLeft className="h-4 w-4" />
-
               Event
             </Link>
 
@@ -426,23 +506,23 @@ export default function ScanningDashboardPage({
 
                   <span className="inline-flex items-center gap-1.5 rounded-full bg-green-50 px-3 py-1 text-xs font-bold text-green-700">
                     <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-green-500" />
-
                     Live
                   </span>
                 </div>
 
-                <p className="mt-1 text-sm text-[#795548]">
-                  {data.event.name}
-                </p>
+                <p className="mt-1 text-sm text-[#795548]">{data.event.name}</p>
 
                 {lastUpdated && (
                   <p className="mt-1 text-xs text-[#a1887f]">
                     Updated{" "}
                     {lastUpdated.toLocaleTimeString(
                       [],
+
                       {
                         hour: "2-digit",
+
                         minute: "2-digit",
+
                         second: "2-digit",
                       },
                     )}
@@ -457,20 +537,41 @@ export default function ScanningDashboardPage({
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
-              onClick={() =>
-                void loadAnalytics(true)
-              }
+              onClick={() => void downloadScanReport("xlsx")}
+              disabled={exportingFormat !== null}
+              className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-700 px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-emerald-800 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {exportingFormat === "xlsx" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileSpreadsheet className="h-4 w-4" />
+              )}
+              Download Excel
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void downloadScanReport("csv")}
+              disabled={exportingFormat !== null}
+              className="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2.5 text-sm font-bold text-emerald-800 shadow-sm transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {exportingFormat === "csv" ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4" />
+              )}
+              Download CSV
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void loadAnalytics(true)}
               disabled={refreshing}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-2.5 text-sm font-bold text-[#241000] shadow-sm transition hover:border-orange-300 hover:bg-orange-50 disabled:opacity-60"
             >
               <RefreshCw
-                className={`h-4 w-4 ${
-                  refreshing
-                    ? "animate-spin"
-                    : ""
-                }`}
+                className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
               />
-
               Refresh
             </button>
 
@@ -479,7 +580,6 @@ export default function ScanningDashboardPage({
               className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-4 py-2.5 text-sm font-bold text-white shadow-sm transition hover:bg-orange-700"
             >
               <Settings2 className="h-4 w-4" />
-
               Configure
             </Link>
           </div>
@@ -498,40 +598,28 @@ export default function ScanningDashboardPage({
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             title="Total Successful Scans"
-            value={
-              data.overview
-                .totalSuccessfulScans
-            }
+            value={data.overview.totalSuccessfulScans}
             subtitle="All successful scans"
             icon={ScanLine}
           />
 
           <StatCard
             title="Unique Attendees"
-            value={
-              data.overview
-                .uniqueScannedAttendees
-            }
+            value={data.overview.uniqueScannedAttendees}
             subtitle={`${data.overview.attendancePercentage}% attendee coverage`}
             icon={Users}
           />
 
           <StatCard
             title="Today's Scans"
-            value={
-              data.overview
-                .todaySuccessfulScans
-            }
+            value={data.overview.todaySuccessfulScans}
             subtitle="Successful scans today"
             icon={Clock3}
           />
 
           <StatCard
             title="Duplicate Attempts"
-            value={
-              data.overview
-                .duplicateAttempts
-            }
+            value={data.overview.duplicateAttempts}
             subtitle="Rejected duplicate scans"
             icon={Copy}
             warning
@@ -543,38 +631,27 @@ export default function ScanningDashboardPage({
         <section className="mt-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <SmallMetric
             label="Total Attempts"
-            value={
-              data.overview.totalAttempts
-            }
+            value={data.overview.totalAttempts}
             icon={QrCode}
           />
 
           <SmallMetric
             label="Invalid QR"
-            value={
-              data.overview
-                .invalidQrAttempts
-            }
+            value={data.overview.invalidQrAttempts}
             icon={ShieldAlert}
             danger
           />
 
           <SmallMetric
             label="Invalid Day"
-            value={
-              data.overview
-                .invalidDayAttempts
-            }
+            value={data.overview.invalidDayAttempts}
             icon={AlertTriangle}
             danger
           />
 
           <SmallMetric
             label="Invalid Module"
-            value={
-              data.overview
-                .invalidItemAttempts
-            }
+            value={data.overview.invalidItemAttempts}
             icon={XCircle}
             danger
           />
@@ -589,9 +666,7 @@ export default function ScanningDashboardPage({
                 Attendee Coverage
               </p>
 
-              <h2 className="mt-1 text-lg font-black">
-                Overall participation
-              </h2>
+              <h2 className="mt-1 text-lg font-black">Overall participation</h2>
             </div>
 
             <div className="flex items-center justify-center">
@@ -603,11 +678,7 @@ export default function ScanningDashboardPage({
               >
                 <div className="flex h-36 w-36 flex-col items-center justify-center rounded-full bg-white shadow-inner">
                   <span className="text-4xl font-black">
-                    {
-                      data.overview
-                        .attendancePercentage
-                    }
-                    %
+                    {data.overview.attendancePercentage}%
                   </span>
 
                   <span className="mt-1 text-xs font-semibold text-[#795548]">
@@ -619,15 +690,10 @@ export default function ScanningDashboardPage({
 
             <div className="mt-7 grid grid-cols-2 gap-3">
               <div className="rounded-2xl bg-orange-50 p-4">
-                <p className="text-xs font-semibold text-[#795548]">
-                  Scanned
-                </p>
+                <p className="text-xs font-semibold text-[#795548]">Scanned</p>
 
                 <p className="mt-1 text-xl font-black text-[#EA580C]">
-                  {
-                    data.overview
-                      .uniqueScannedAttendees
-                  }
+                  {data.overview.uniqueScannedAttendees}
                 </p>
               </div>
 
@@ -637,10 +703,7 @@ export default function ScanningDashboardPage({
                 </p>
 
                 <p className="mt-1 text-xl font-black">
-                  {
-                    data.overview
-                      .unscannedCount
-                  }
+                  {data.overview.unscannedCount}
                 </p>
               </div>
             </div>
@@ -669,37 +732,32 @@ export default function ScanningDashboardPage({
               <EmptyState text="No successful scans yet." />
             ) : (
               <div className="space-y-5">
-                {data.itemStats.map(
-                  (item) => (
-                    <div
-                      key={item.itemId}
-                    >
-                      <div className="mb-2 flex items-center justify-between gap-4">
-                        <span className="truncate text-sm font-bold">
-                          {item.itemName}
-                        </span>
+                {data.itemStats.map((item) => (
+                  <div key={item.itemId}>
+                    <div className="mb-2 flex items-center justify-between gap-4">
+                      <span className="truncate text-sm font-bold">
+                        {item.itemName}
+                      </span>
 
-                        <span className="text-sm font-black text-[#EA580C]">
-                          {item.total}
-                        </span>
-                      </div>
-
-                      <div className="h-2.5 overflow-hidden rounded-full bg-orange-50">
-                        <div
-                          className="h-full rounded-full bg-gradient-to-r from-[#EA580C] to-[#241000] transition-all duration-500"
-                          style={{
-                            width: `${Math.max(
-                              (item.total /
-                                maxItemCount) *
-                                100,
-                              3,
-                            )}%`,
-                          }}
-                        />
-                      </div>
+                      <span className="text-sm font-black text-[#EA580C]">
+                        {item.total}
+                      </span>
                     </div>
-                  ),
-                )}
+
+                    <div className="h-2.5 overflow-hidden rounded-full bg-orange-50">
+                      <div
+                        className="h-full rounded-full bg-gradient-to-r from-[#EA580C] to-[#241000] transition-all duration-500"
+                        style={{
+                          width: `${Math.max(
+                            (item.total / maxItemCount) * 100,
+
+                            3,
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </div>
@@ -722,38 +780,33 @@ export default function ScanningDashboardPage({
             <EmptyState text="No day-wise scan data available yet." />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {data.dayStats.map(
-                (day) => (
-                  <div
-                    key={day.dayId}
-                    className="rounded-2xl border border-orange-100 bg-[#fffaf7] p-5"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-bold">
-                        {day.dayName}
-                      </span>
+              {data.dayStats.map((day) => (
+                <div
+                  key={day.dayId}
+                  className="rounded-2xl border border-orange-100 bg-[#fffaf7] p-5"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm font-bold">{day.dayName}</span>
 
-                      <span className="text-lg font-black text-[#EA580C]">
-                        {day.total}
-                      </span>
-                    </div>
-
-                    <div className="mt-4 h-2 overflow-hidden rounded-full bg-orange-100">
-                      <div
-                        className="h-full rounded-full bg-[#EA580C] transition-all duration-500"
-                        style={{
-                          width: `${Math.max(
-                            (day.total /
-                              maxDayCount) *
-                              100,
-                            4,
-                          )}%`,
-                        }}
-                      />
-                    </div>
+                    <span className="text-lg font-black text-[#EA580C]">
+                      {day.total}
+                    </span>
                   </div>
-                ),
-              )}
+
+                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-orange-100">
+                    <div
+                      className="h-full rounded-full bg-[#EA580C] transition-all duration-500"
+                      style={{
+                        width: `${Math.max(
+                          (day.total / maxDayCount) * 100,
+
+                          4,
+                        )}%`,
+                      }}
+                    />
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </section>
@@ -774,7 +827,6 @@ export default function ScanningDashboardPage({
 
             <div className="flex items-center gap-2 text-xs font-semibold text-green-600">
               <CheckCircle2 className="h-4 w-4" />
-
               Live data
             </div>
           </div>
@@ -783,44 +835,42 @@ export default function ScanningDashboardPage({
             <EmptyState text="No successful scans yet." />
           ) : (
             <div className="divide-y divide-orange-50">
-              {data.recentScans.map(
-                (scan) => (
-                  <div
-                    key={scan.id}
-                    className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-50">
-                        <CheckCircle2 className="h-5 w-5 text-green-600" />
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold">
-                          {scan.attendeeName}
-                        </p>
-
-                        <p className="mt-0.5 text-xs text-[#795548]">
-                          {scan.registrationNumber}
-                          {" • "}
-                          {scan.itemName}
-                        </p>
-                      </div>
+              {data.recentScans.map((scan) => (
+                <div
+                  key={scan.id}
+                  className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-green-50">
+                      <CheckCircle2 className="h-5 w-5 text-green-600" />
                     </div>
 
-                    <div className="text-left sm:text-right">
-                      <p className="text-xs font-bold text-[#241000]">
-                        {scan.dayName}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold">
+                        {scan.attendeeName}
                       </p>
 
-                      <p className="mt-0.5 text-xs text-[#a1887f]">
-                        {formatDateTime(
-                          scan.scannedAt,
-                        )}
+                      <p className="mt-0.5 text-xs text-[#795548]">
+                        {scan.registrationNumber}
+
+                        {" • "}
+
+                        {scan.itemName}
                       </p>
                     </div>
                   </div>
-                ),
-              )}
+
+                  <div className="text-left sm:text-right">
+                    <p className="text-xs font-bold text-[#241000]">
+                      {scan.dayName}
+                    </p>
+
+                    <p className="mt-0.5 text-xs text-[#a1887f]">
+                      {formatDateTime(scan.scannedAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </section>
@@ -846,53 +896,46 @@ export default function ScanningDashboardPage({
             </div>
           </div>
 
-          {data.recentDuplicates
-            .length === 0 ? (
+          {data.recentDuplicates.length === 0 ? (
             <EmptyState text="No duplicate attempts recorded." />
           ) : (
             <div className="divide-y divide-orange-50">
-              {data.recentDuplicates.map(
-                (attempt) => (
-                  <div
-                    key={attempt.id}
-                    className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50">
-                        <Copy className="h-5 w-5 text-amber-600" />
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-bold">
-                          {attempt.attendeeName ||
-                            "Unknown attendee"}
-                        </p>
-
-                        <p className="mt-0.5 text-xs text-[#795548]">
-                          {attempt.registrationNumber ||
-                            "No registration number"}
-                          {" • "}
-                          {attempt.itemName ||
-                            "Unknown module"}
-                        </p>
-                      </div>
+              {data.recentDuplicates.map((attempt) => (
+                <div
+                  key={attempt.id}
+                  className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-amber-50">
+                      <Copy className="h-5 w-5 text-amber-600" />
                     </div>
 
-                    <div className="text-left sm:text-right">
-                      <p className="text-xs font-bold">
-                        {attempt.dayName ||
-                          "Unknown day"}
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-bold">
+                        {attempt.attendeeName || "Unknown attendee"}
                       </p>
 
-                      <p className="mt-0.5 text-xs text-[#a1887f]">
-                        {formatDateTime(
-                          attempt.scannedAt,
-                        )}
+                      <p className="mt-0.5 text-xs text-[#795548]">
+                        {attempt.registrationNumber || "No registration number"}
+
+                        {" • "}
+
+                        {attempt.itemName || "Unknown module"}
                       </p>
                     </div>
                   </div>
-                ),
-              )}
+
+                  <div className="text-left sm:text-right">
+                    <p className="text-xs font-bold">
+                      {attempt.dayName || "Unknown day"}
+                    </p>
+
+                    <p className="mt-0.5 text-xs text-[#a1887f]">
+                      {formatDateTime(attempt.scannedAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </section>
@@ -918,52 +961,44 @@ export default function ScanningDashboardPage({
             </div>
           </div>
 
-          {data.recentInvalidAttempts
-            .length === 0 ? (
+          {data.recentInvalidAttempts.length === 0 ? (
             <EmptyState text="No invalid attempts recorded." />
           ) : (
             <div className="divide-y divide-orange-50">
-              {data.recentInvalidAttempts.map(
-                (attempt) => (
-                  <div
-                    key={attempt.id}
-                    className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div className="flex min-w-0 items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50">
-                        <XCircle className="h-5 w-5 text-red-500" />
-                      </div>
-
-                      <div className="min-w-0">
-                        <p className="text-sm font-bold">
-                          {getAttemptLabel(
-                            attempt.status,
-                          )}
-                        </p>
-
-                        <p className="mt-0.5 truncate text-xs text-[#795548]">
-                          {attempt.registrationNumber ||
-                            attempt.qrValue ||
-                            "Unknown QR value"}
-                        </p>
-                      </div>
+              {data.recentInvalidAttempts.map((attempt) => (
+                <div
+                  key={attempt.id}
+                  className="flex flex-col gap-3 px-6 py-4 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-50">
+                      <XCircle className="h-5 w-5 text-red-500" />
                     </div>
 
-                    <div className="text-left sm:text-right">
-                      <p className="text-xs font-bold">
-                        {attempt.itemName ||
-                          "Unknown module"}
+                    <div className="min-w-0">
+                      <p className="text-sm font-bold">
+                        {getAttemptLabel(attempt.status)}
                       </p>
 
-                      <p className="mt-0.5 text-xs text-[#a1887f]">
-                        {formatTime(
-                          attempt.scannedAt,
-                        )}
+                      <p className="mt-0.5 truncate text-xs text-[#795548]">
+                        {attempt.registrationNumber ||
+                          attempt.qrValue ||
+                          "Unknown QR value"}
                       </p>
                     </div>
                   </div>
-                ),
-              )}
+
+                  <div className="text-left sm:text-right">
+                    <p className="text-xs font-bold">
+                      {attempt.itemName || "Unknown module"}
+                    </p>
+
+                    <p className="mt-0.5 text-xs text-[#a1887f]">
+                      {formatTime(attempt.scannedAt)}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </section>
@@ -981,9 +1016,7 @@ export default function ScanningDashboardPage({
               </div>
 
               <div>
-                <h3 className="font-black">
-                  Configure Scanning
-                </h3>
+                <h3 className="font-black">Configure Scanning</h3>
 
                 <p className="mt-1 text-sm text-[#795548]">
                   Manage days and scanning modules.
@@ -1004,9 +1037,7 @@ export default function ScanningDashboardPage({
                 </div>
 
                 <div>
-                  <h3 className="font-black">
-                    Open Public Scanner
-                  </h3>
+                  <h3 className="font-black">Open Public Scanner</h3>
 
                   <p className="mt-1 text-sm text-white/75">
                     Launch the attendee scanning portal.
@@ -1022,26 +1053,38 @@ export default function ScanningDashboardPage({
 }
 
 /*
+
  * --------------------------------------------------
+
  * STAT CARD
+
  * --------------------------------------------------
+
  */
 
 interface StatCardProps {
   title: string;
+
   value: number;
+
   subtitle: string;
+
   icon: React.ComponentType<{
     className?: string;
   }>;
+
   warning?: boolean;
 }
 
 function StatCard({
   title,
+
   value,
+
   subtitle,
+
   icon: Icon,
+
   warning = false,
 }: StatCardProps) {
   return (
@@ -1054,31 +1097,23 @@ function StatCard({
 
           <p
             className={`mt-3 text-3xl font-black ${
-              warning
-                ? "text-amber-600"
-                : "text-[#241000]"
+              warning ? "text-amber-600" : "text-[#241000]"
             }`}
           >
             {value}
           </p>
 
-          <p className="mt-1 text-xs text-[#a1887f]">
-            {subtitle}
-          </p>
+          <p className="mt-1 text-xs text-[#a1887f]">{subtitle}</p>
         </div>
 
         <div
           className={`flex h-11 w-11 items-center justify-center rounded-2xl ${
-            warning
-              ? "bg-amber-50"
-              : "bg-orange-50"
+            warning ? "bg-amber-50" : "bg-orange-50"
           }`}
         >
           <Icon
             className={`h-5 w-5 ${
-              warning
-                ? "text-amber-600"
-                : "text-[#EA580C]"
+              warning ? "text-amber-600" : "text-[#EA580C]"
             }`}
           />
         </div>
@@ -1088,38 +1123,44 @@ function StatCard({
 }
 
 /*
+
  * --------------------------------------------------
+
  * SMALL METRIC
+
  * --------------------------------------------------
+
  */
 
 interface SmallMetricProps {
   label: string;
+
   value: number;
+
   icon: React.ComponentType<{
     className?: string;
   }>;
+
   danger?: boolean;
 }
 
 function SmallMetric({
   label,
+
   value,
+
   icon: Icon,
+
   danger = false,
 }: SmallMetricProps) {
   return (
     <div className="flex items-center justify-between rounded-2xl border border-orange-100 bg-white px-5 py-4 shadow-sm">
       <div>
-        <p className="text-xs font-semibold text-[#795548]">
-          {label}
-        </p>
+        <p className="text-xs font-semibold text-[#795548]">{label}</p>
 
         <p
           className={`mt-1 text-xl font-black ${
-            danger
-              ? "text-red-500"
-              : "text-[#241000]"
+            danger ? "text-red-500" : "text-[#241000]"
           }`}
         >
           {value}
@@ -1128,17 +1169,11 @@ function SmallMetric({
 
       <div
         className={`flex h-10 w-10 items-center justify-center rounded-xl ${
-          danger
-            ? "bg-red-50"
-            : "bg-orange-50"
+          danger ? "bg-red-50" : "bg-orange-50"
         }`}
       >
         <Icon
-          className={`h-5 w-5 ${
-            danger
-              ? "text-red-500"
-              : "text-[#EA580C]"
-          }`}
+          className={`h-5 w-5 ${danger ? "text-red-500" : "text-[#EA580C]"}`}
         />
       </div>
     </div>
@@ -1146,16 +1181,16 @@ function SmallMetric({
 }
 
 /*
+
  * --------------------------------------------------
+
  * EMPTY STATE
+
  * --------------------------------------------------
+
  */
 
-function EmptyState({
-  text,
-}: {
-  text: string;
-}) {
+function EmptyState({ text }: { text: string }) {
   return (
     <div className="flex items-center justify-center px-6 py-12 text-center">
       <div>
@@ -1163,9 +1198,7 @@ function EmptyState({
           <BarChart3 className="h-5 w-5 text-[#EA580C]" />
         </div>
 
-        <p className="mt-3 text-sm font-semibold text-[#795548]">
-          {text}
-        </p>
+        <p className="mt-3 text-sm font-semibold text-[#795548]">{text}</p>
       </div>
     </div>
   );

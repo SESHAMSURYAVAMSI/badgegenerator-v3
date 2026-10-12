@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-
 import { connectDB } from "@/lib/mongodb";
 import Event from "@/models/Event";
 import Attendee from "@/models/Attendee";
@@ -7,11 +6,16 @@ import ScanConfig from "@/models/ScanConfig";
 import ScanRecord from "@/models/ScanRecord";
 import ScanAttempt from "@/models/ScanAttempt";
 import { getPublicEventSession } from "@/lib/publicEventAuth";
-
 interface RouteContext {
   params: Promise<{
     publicId: string;
   }>;
+}
+function isKitbagItem(item: { id?: string; name?: string }): boolean {
+  return [item.id, item.name].some((value) =>
+    typeof value === "string" &&
+    value.toLowerCase().replace(/[^a-z0-9]/g, "").includes("kitbag"),
+  );
 }
 
 interface ScanRequestBody {
@@ -20,16 +24,13 @@ interface ScanRequestBody {
   qrValue?: string;
   registrationNumber?: string;
 }
-
 export async function POST(
   request: Request,
   context: RouteContext,
 ) {
   try {
     const { publicId } = await context.params;
-
     const normalizedPublicId = publicId.trim();
-
     if (!normalizedPublicId) {
       return NextResponse.json(
         {
@@ -42,7 +43,6 @@ export async function POST(
         },
       );
     }
-
     /*
      * --------------------------------------------------
      * PUBLIC EVENT AUTHENTICATION
@@ -54,12 +54,10 @@ export async function POST(
      * The session is also tied to the publicId so a
      * session for one event cannot be reused for another.
      */
-
     const publicSession = await getPublicEventSession(
       request,
       normalizedPublicId,
     );
-
     if (!publicSession) {
       return NextResponse.json(
         {
@@ -74,47 +72,37 @@ export async function POST(
         },
       );
     }
-
     await connectDB();
-
     const body =
       (await request.json()) as ScanRequestBody;
-
     const dayId = String(
       body.dayId ?? "",
     ).trim();
-
     const itemId = String(
       body.itemId ?? "",
     ).trim();
-
     const qrValue = String(
       body.qrValue ?? "",
     ).trim();
-
     const registrationNumber = String(
       body.registrationNumber ?? "",
     )
       .trim()
       .toUpperCase();
-
     /*
      * --------------------------------------------------
      * FIND EVENT
      * --------------------------------------------------
      */
-
     const event = await Event.findOne({
       publicId: normalizedPublicId,
     }).lean();
-
     if (!event) {
       await ScanAttempt.create({
         status: "event_not_found",
         source: "public",
         qrValue,
       });
-
       return NextResponse.json(
         {
           success: false,
@@ -126,7 +114,6 @@ export async function POST(
         },
       );
     }
-
     /*
      * --------------------------------------------------
      * VERIFY SESSION BELONGS TO THIS EVENT
@@ -138,7 +125,6 @@ export async function POST(
      * session cookie, it cannot be used for a different
      * event.
      */
-
     if (
       publicSession.eventId !==
       event._id.toString()
@@ -156,18 +142,15 @@ export async function POST(
         },
       );
     }
-
     /*
      * --------------------------------------------------
      * FIND SCANNING CONFIG
      * --------------------------------------------------
      */
-
     const config =
       await ScanConfig.findOne({
         eventId: event._id,
       }).lean();
-
     if (!config) {
       return NextResponse.json(
         {
@@ -181,19 +164,16 @@ export async function POST(
         },
       );
     }
-
     /*
      * --------------------------------------------------
      * VALIDATE DAY
      * --------------------------------------------------
      */
-
     const day = config.days.find(
       (currentDay) =>
         currentDay.id === dayId &&
         currentDay.enabled,
     );
-
     if (!day) {
       await ScanAttempt.create({
         eventId: event._id,
@@ -202,7 +182,6 @@ export async function POST(
         source: "public",
         qrValue,
       });
-
       return NextResponse.json(
         {
           success: false,
@@ -215,19 +194,16 @@ export async function POST(
         },
       );
     }
-
     /*
      * --------------------------------------------------
      * VALIDATE ITEM
      * --------------------------------------------------
      */
-
     const item = day.items.find(
       (currentItem) =>
         currentItem.id === itemId &&
         currentItem.enabled,
     );
-
     if (!item) {
       await ScanAttempt.create({
         eventId: event._id,
@@ -238,7 +214,6 @@ export async function POST(
         source: "public",
         qrValue,
       });
-
       return NextResponse.json(
         {
           success: false,
@@ -251,13 +226,11 @@ export async function POST(
         },
       );
     }
-
     /*
      * --------------------------------------------------
      * VALIDATE QR
      * --------------------------------------------------
      */
-
     if (!qrValue && !registrationNumber) {
       await ScanAttempt.create({
         eventId: event._id,
@@ -268,7 +241,6 @@ export async function POST(
         status: "invalid_qr",
         source: "public",
       });
-
       return NextResponse.json(
         {
           success: false,
@@ -281,13 +253,11 @@ export async function POST(
         },
       );
     }
-
     /*
      * --------------------------------------------------
      * FIND ATTENDEE
      * --------------------------------------------------
      */
-
     const attendeeQuery: {
       eventId: typeof event._id;
       $or: Array<
@@ -298,30 +268,25 @@ export async function POST(
       eventId: event._id,
       $or: [],
     };
-
     if (qrValue) {
       attendeeQuery.$or.push({
         qrValue,
       });
     }
-
     if (registrationNumber) {
       attendeeQuery.$or.push({
         registrationNumber,
       });
     }
-
     const attendee =
       await Attendee.findOne(
         attendeeQuery,
       );
-
     /*
      * --------------------------------------------------
      * INVALID ATTENDEE
      * --------------------------------------------------
      */
-
     if (!attendee) {
       await ScanAttempt.create({
         eventId: event._id,
@@ -334,7 +299,6 @@ export async function POST(
         status: "invalid_qr",
         source: "public",
       });
-
       return NextResponse.json(
         {
           success: false,
@@ -346,6 +310,91 @@ export async function POST(
           status: 404,
         },
       );
+    }
+    /*
+     * KITBAG: ONCE PER ATTENDEE FOR THE WHOLE EVENT
+     *
+     * Kitbag may be collected on any event day, but only
+     * once across all days. Check configured item IDs and
+     * historical record names so older scans still count.
+     */
+    const isKitbag = isKitbagItem(item);
+
+    if (isKitbag) {
+      const configuredKitbagItems = config.days
+        .flatMap((configuredDay) => configuredDay.items)
+        .filter((configuredItem) => isKitbagItem(configuredItem));
+
+      const kitbagItemIds = [
+        ...new Set(configuredKitbagItems.map((configuredItem) => configuredItem.id)),
+      ];
+
+      const existingKitbagScan = await ScanRecord.findOne({
+        eventId: event._id,
+        attendeeId: attendee._id,
+        $or: [
+          { eventWideKey: "kitbag" },
+          ...(kitbagItemIds.length > 0
+            ? [{ itemId: { $in: kitbagItemIds } }]
+            : []),
+          { itemName: /kit[\s_-]*bag/i },
+        ],
+      })
+        .sort({ scannedAt: 1 })
+        .lean();
+
+      if (existingKitbagScan) {
+        await ScanAttempt.create({
+          eventId: event._id,
+          attendeeId: attendee._id,
+          dayId: day.id,
+          dayName: day.name,
+          itemId: item.id,
+          itemName: item.name,
+          registrationNumber: attendee.registrationNumber,
+          attendeeName: attendee.name,
+          qrValue: qrValue || attendee.qrValue,
+          status: "duplicate",
+          source: "public",
+        });
+
+        return NextResponse.json(
+          {
+            success: false,
+            duplicate: true,
+            code: "KITBAG_ALREADY_COLLECTED",
+            message: `Kitbag has already been collected during this event on ${existingKitbagScan.dayName} at ${new Date(existingKitbagScan.scannedAt).toLocaleTimeString("en-IN", {
+              hour: "2-digit",
+              minute: "2-digit",
+              second: "2-digit",
+            })}.`,
+            data: {
+              scanId: existingKitbagScan._id.toString(),
+              attendee: {
+                id: attendee._id.toString(),
+                name: attendee.name,
+                email: attendee.email,
+                registrationNumber: attendee.registrationNumber,
+                category: attendee.category,
+              },
+              event: {
+                id: event._id.toString(),
+                name: event.name,
+              },
+              day: {
+                id: existingKitbagScan.dayId,
+                name: existingKitbagScan.dayName,
+              },
+              item: {
+                id: existingKitbagScan.itemId,
+                name: existingKitbagScan.itemName,
+              },
+              scannedAt: existingKitbagScan.scannedAt.toISOString(),
+            },
+          },
+          { status: 200 },
+        );
+      }
     }
 
     /*
@@ -361,7 +410,6 @@ export async function POST(
      * If already scanned, return the ORIGINAL
      * scan timestamp.
      */
-
     const existingScan =
       await ScanRecord.findOne({
         eventId: event._id,
@@ -369,7 +417,6 @@ export async function POST(
         dayId: day.id,
         itemId: item.id,
       }).lean();
-
     if (existingScan) {
       await ScanAttempt.create({
         eventId: event._id,
@@ -386,7 +433,6 @@ export async function POST(
         status: "duplicate",
         source: "public",
       });
-
       return NextResponse.json(
         {
           success: false,
@@ -397,7 +443,6 @@ export async function POST(
           data: {
             scanId:
               existingScan._id.toString(),
-
             attendee: {
               id: attendee._id.toString(),
               name: attendee.name,
@@ -406,22 +451,18 @@ export async function POST(
                 attendee.registrationNumber,
               category: attendee.category,
             },
-
             event: {
               id: event._id.toString(),
               name: event.name,
             },
-
             day: {
               id: day.id,
               name: day.name,
             },
-
             item: {
               id: item.id,
               name: item.name,
             },
-
             scannedAt:
               existingScan.scannedAt.toISOString(),
           },
@@ -431,15 +472,12 @@ export async function POST(
         },
       );
     }
-
     /*
      * --------------------------------------------------
      * CREATE SUCCESSFUL SCAN
      * --------------------------------------------------
      */
-
     const scannedAt = new Date();
-
     try {
       const createdScan =
         await ScanRecord.create({
@@ -453,14 +491,13 @@ export async function POST(
             attendee.registrationNumber,
           attendeeName: attendee.name,
           scannedAt,
+          ...(isKitbag ? { eventWideKey: "kitbag" } : {}),
         });
-
       /*
        * ------------------------------------------------
        * RECORD SUCCESS ATTEMPT
        * ------------------------------------------------
        */
-
       await ScanAttempt.create({
         eventId: event._id,
         attendeeId: attendee._id,
@@ -476,7 +513,6 @@ export async function POST(
         status: "success",
         source: "public",
       });
-
       /*
        * ------------------------------------------------
        * SUCCESS RESPONSE
@@ -485,7 +521,6 @@ export async function POST(
        * Keep the response shape exactly the same
        * for success and duplicate.
        */
-
       return NextResponse.json(
         {
           success: true,
@@ -495,7 +530,6 @@ export async function POST(
           data: {
             scanId:
               createdScan._id.toString(),
-
             attendee: {
               id: attendee._id.toString(),
               name: attendee.name,
@@ -504,22 +538,18 @@ export async function POST(
                 attendee.registrationNumber,
               category: attendee.category,
             },
-
             event: {
               id: event._id.toString(),
               name: event.name,
             },
-
             day: {
               id: day.id,
               name: day.name,
             },
-
             item: {
               id: item.id,
               name: item.name,
             },
-
             scannedAt:
               createdScan.scannedAt.toISOString(),
           },
@@ -543,7 +573,6 @@ export async function POST(
        * fetch the original scan and return it as
        * "Already Scanned".
        */
-
       if (
         error &&
         typeof error === "object" &&
@@ -551,13 +580,20 @@ export async function POST(
         error.code === 11000
       ) {
         const raceExistingScan =
-          await ScanRecord.findOne({
-            eventId: event._id,
-            attendeeId: attendee._id,
-            dayId: day.id,
-            itemId: item.id,
-          }).lean();
-
+          await ScanRecord.findOne(
+            isKitbag
+              ? {
+                  eventId: event._id,
+                  attendeeId: attendee._id,
+                  eventWideKey: "kitbag",
+                }
+              : {
+                  eventId: event._id,
+                  attendeeId: attendee._id,
+                  dayId: day.id,
+                  itemId: item.id,
+                },
+          ).lean();
         await ScanAttempt.create({
           eventId: event._id,
           attendeeId: attendee._id,
@@ -573,18 +609,17 @@ export async function POST(
           status: "duplicate",
           source: "public",
         });
-
         return NextResponse.json(
           {
             success: false,
             duplicate: true,
             code: "ALREADY_SCANNED",
-            message:
-              "This attendee has already been scanned for this module.",
+            message: isKitbag
+              ? "Kitbag has already been collected during this event."
+              : "This attendee has already been scanned for this module.",
             data: {
               scanId:
                 raceExistingScan?._id?.toString(),
-
               attendee: {
                 id: attendee._id.toString(),
                 name: attendee.name,
@@ -593,22 +628,18 @@ export async function POST(
                   attendee.registrationNumber,
                 category: attendee.category,
               },
-
               event: {
                 id: event._id.toString(),
                 name: event.name,
               },
-
               day: {
-                id: day.id,
-                name: day.name,
+                id: raceExistingScan?.dayId ?? day.id,
+                name: raceExistingScan?.dayName ?? day.name,
               },
-
               item: {
-                id: item.id,
-                name: item.name,
+                id: raceExistingScan?.itemId ?? item.id,
+                name: raceExistingScan?.itemName ?? item.name,
               },
-
               scannedAt:
                 raceExistingScan?.scannedAt
                   ? raceExistingScan.scannedAt.toISOString()
@@ -620,7 +651,6 @@ export async function POST(
           },
         );
       }
-
       throw error;
     }
   } catch (error) {
@@ -628,7 +658,6 @@ export async function POST(
       "Public scanning error:",
       error,
     );
-
     return NextResponse.json(
       {
         success: false,

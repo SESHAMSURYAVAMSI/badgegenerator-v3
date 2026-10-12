@@ -13,6 +13,12 @@ export interface IScanRecord {
   itemId: string;
   itemName: string;
 
+  /**
+   * Set to "kitbag" for items that can be collected only
+   * once per attendee for the entire event, regardless of day.
+   */
+  eventWideKey?: string;
+
   registrationNumber: string;
   attendeeName: string;
 
@@ -62,6 +68,13 @@ const ScanRecordSchema =
         trim: true,
       },
 
+      eventWideKey: {
+        type: String,
+        trim: true,
+        lowercase: true,
+        default: undefined,
+      },
+
       registrationNumber: {
         type: String,
         required: true,
@@ -100,6 +113,20 @@ ScanRecordSchema.index(
   },
   {
     unique: true,
+  },
+);
+
+ScanRecordSchema.index(
+  {
+    eventId: 1,
+    attendeeId: 1,
+    eventWideKey: 1,
+  },
+  {
+    unique: true,
+    partialFilterExpression: {
+      eventWideKey: { $type: "string" },
+    },
   },
 );
 
