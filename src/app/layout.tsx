@@ -1,6 +1,6 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
-
+import Footer from "@/components/Footer";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -22,6 +22,13 @@ export const metadata: Metadata = {
     "Modern event management and professional badge generation platform.",
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: "#fffaf7",
+};
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -32,7 +39,9 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} antialiased`}
     >
-      <body className="min-h-screen">{children}</body>
+      <body className="min-h-[100dvh]">{children}
+        <Footer />
+      </body>
     </html>
   );
 }

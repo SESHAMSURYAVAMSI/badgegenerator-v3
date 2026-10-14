@@ -7,31 +7,22 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-
   --color-card: var(--card);
   --color-card-foreground: var(--card-foreground);
-
   --color-popover: var(--popover);
   --color-popover-foreground: var(--popover-foreground);
-
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
-
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-
   --color-muted: var(--muted);
   --color-muted-foreground: var(--muted-foreground);
-
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
-
   --color-destructive: var(--destructive);
-
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
-
   --color-sidebar: var(--sidebar);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar-primary: var(--sidebar-primary);
@@ -40,16 +31,13 @@
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
-
   --color-chart-1: var(--chart-1);
   --color-chart-2: var(--chart-2);
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
-
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-
   --radius-sm: calc(var(--radius) * 0.6);
   --radius-md: calc(var(--radius) * 0.8);
   --radius-lg: var(--radius);
@@ -59,58 +47,36 @@
   --radius-4xl: calc(var(--radius) * 2.6);
 }
 
-/* =========================================================
-   BadgeFlow Design Tokens
-   ========================================================= */
-
 :root {
-  /* Brand */
   --brand-orange: #ea580c;
   --brand-orange-light: #f97316;
   --brand-orange-dark: #c2410c;
-
   --brand-brown: #241000;
   --brand-brown-light: #3a1b08;
-
-  /* Application */
   --background: #faf9f7;
   --foreground: #241000;
-
   --card: #ffffff;
   --card-foreground: #241000;
-
   --popover: #ffffff;
   --popover-foreground: #241000;
-
   --primary: #ea580c;
   --primary-foreground: #ffffff;
-
   --secondary: #fff7ed;
   --secondary-foreground: #7c2d12;
-
   --muted: #f5f5f4;
   --muted-foreground: #78716c;
-
   --accent: #fff7ed;
   --accent-foreground: #9a3412;
-
   --destructive: #dc2626;
-
   --border: #e7e5e4;
   --input: #e7e5e4;
   --ring: #ea580c;
-
-  /* Charts */
   --chart-1: #ea580c;
   --chart-2: #f97316;
   --chart-3: #fb923c;
   --chart-4: #c2410c;
   --chart-5: #7c2d12;
-
-  /* Radius */
   --radius: 0.75rem;
-
-  /* Sidebar */
   --sidebar: #241000;
   --sidebar-foreground: #ffffff;
   --sidebar-primary: #ea580c;
@@ -121,44 +87,30 @@
   --sidebar-ring: #ea580c;
 }
 
-/* =========================================================
-   Dark Mode
-   ========================================================= */
-
 .dark {
   --background: #120803;
   --foreground: #fff7ed;
-
   --card: #1c0d05;
   --card-foreground: #fff7ed;
-
   --popover: #1c0d05;
   --popover-foreground: #fff7ed;
-
   --primary: #f97316;
   --primary-foreground: #ffffff;
-
   --secondary: #2a1509;
   --secondary-foreground: #fed7aa;
-
   --muted: #26150c;
   --muted-foreground: #a8a29e;
-
   --accent: #2a1509;
   --accent-foreground: #fed7aa;
-
   --destructive: #ef4444;
-
   --border: rgba(255, 255, 255, 0.1);
   --input: rgba(255, 255, 255, 0.12);
   --ring: #f97316;
-
   --chart-1: #f97316;
   --chart-2: #fb923c;
   --chart-3: #fdba74;
   --chart-4: #ea580c;
   --chart-5: #c2410c;
-
   --sidebar: #0d0501;
   --sidebar-foreground: #fff7ed;
   --sidebar-primary: #f97316;
@@ -169,10 +121,6 @@
   --sidebar-ring: #f97316;
 }
 
-/* =========================================================
-   Base
-   ========================================================= */
-
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -181,12 +129,19 @@
   html {
     @apply font-sans;
     scroll-behavior: smooth;
+    width: 100%;
+    min-height: 100%;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   body {
     @apply bg-background text-foreground;
+    width: 100%;
     min-height: 100vh;
+    min-height: 100dvh;
     margin: 0;
+    overflow-x: clip;
   }
 
   button,
@@ -198,6 +153,20 @@
 
   button {
     cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  input,
+  textarea,
+  select {
+    max-width: 100%;
+  }
+
+  img,
+  video,
+  canvas,
+  svg {
+    max-width: 100%;
   }
 
   ::selection {
@@ -206,40 +175,19 @@
   }
 }
 
-/* =========================================================
-   BadgeFlow Utilities
-   ========================================================= */
-
 @layer utilities {
   .badgeflow-gradient {
     background:
-      radial-gradient(
-        circle at top left,
-        rgba(234, 88, 12, 0.28),
-        transparent 35%
-      ),
-      linear-gradient(
-        135deg,
-        #241000 0%,
-        #3a1605 50%,
-        #ea580c 150%
-      );
+      radial-gradient(circle at top left, rgba(234, 88, 12, 0.28), transparent 35%),
+      linear-gradient(135deg, #241000 0%, #3a1605 50%, #ea580c 150%);
   }
 
   .badgeflow-orange-gradient {
-    background: linear-gradient(
-      135deg,
-      #ea580c 0%,
-      #f97316 100%
-    );
+    background: linear-gradient(135deg, #ea580c 0%, #f97316 100%);
   }
 
   .badgeflow-text-gradient {
-    background: linear-gradient(
-      135deg,
-      #ea580c,
-      #f97316
-    );
+    background: linear-gradient(135deg, #ea580c, #f97316);
     background-clip: text;
     -webkit-background-clip: text;
     color: transparent;
@@ -257,5 +205,36 @@
     backdrop-filter: blur(18px);
     -webkit-backdrop-filter: blur(18px);
     border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+}
+
+/* Mobile layout safeguards for the public scanning flow. */
+.public-scanner-page {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
+}
+
+@media (max-width: 639px) {
+  .public-scanner-page button {
+    touch-action: manipulation;
+  }
+
+  .public-scanner-page h1,
+  .public-scanner-page h2,
+  .public-scanner-page h3,
+  .public-scanner-page p {
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
   }
 }

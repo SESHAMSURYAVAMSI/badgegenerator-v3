@@ -1,107 +1,42 @@
 import { auth } from "@/auth";
 import { NextResponse } from "next/server";
+import { getPublicEventSessionFromRequest } from "@/lib/publicEventAuth";
 
-import {
-  getPublicEventSessionFromRequest,
-} from "@/lib/publicEventAuth";
+export default auth(async (request) => {
+  const pathname = request.nextUrl.pathname;
+  const isAuthenticated = Boolean(request.auth);
 
-export default auth(
-  async (request) => {
-    const pathname =
-      request.nextUrl.pathname;
+  // Admin routes
+  if (pathname.startsWith("/dashboard") && !isAuthenticated) {
+    const loginUrl = new URL("/admin-login", request.nextUrl.origin);
+    loginUrl.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
 
-    const isAuthenticated =
-      Boolean(request.auth);
+  // Public event routes. The signed cookie now accepts either a slug
+  // or a legacy permanent publicId as the URL segment.
+  const publicMatch = pathname.match(/^\/public\/([^/]+)(?:\/(.*))?$/);
+  if (publicMatch) {
+    const identifier = decodeURIComponent(publicMatch[1]);
+    const remainingPath = publicMatch[2] ?? "";
+    const isLoginPage = remainingPath === "login";
 
-    /*
-     * --------------------------------------------------
-     * ADMIN ROUTES
-     * --------------------------------------------------
-     */
-
-    const isDashboardRoute =
-      pathname.startsWith("/dashboard");
-
-    if (
-      isDashboardRoute &&
-      !isAuthenticated
-    ) {
-      const loginUrl =
-        new URL(
-          "/admin-login",
+    if (!isLoginPage) {
+      const publicSession = await getPublicEventSessionFromRequest(request, identifier);
+      if (!publicSession) {
+        const loginUrl = new URL(
+          `/public/${encodeURIComponent(identifier)}/login`,
           request.nextUrl.origin,
         );
-
-      loginUrl.searchParams.set(
-        "callbackUrl",
-        pathname,
-      );
-
-      return NextResponse.redirect(
-        loginUrl,
-      );
-    }
-
-    /*
-     * --------------------------------------------------
-     * PUBLIC EVENT ROUTES
-     * --------------------------------------------------
-     */
-
-    const publicMatch =
-      pathname.match(
-        /^\/public\/([^/]+)(?:\/(.*))?$/,
-      );
-
-    if (publicMatch) {
-      const publicId =
-        publicMatch[1];
-
-      const remainingPath =
-        publicMatch[2] ?? "";
-
-      const isLoginPage =
-        remainingPath === "login";
-
-      /*
-       * The login page itself must remain public.
-       */
-
-      if (!isLoginPage) {
-        const publicSession =
-          await getPublicEventSessionFromRequest(
-            request,
-            publicId,
-          );
-
-        if (!publicSession) {
-          const loginUrl =
-            new URL(
-              `/public/${encodeURIComponent(
-                publicId,
-              )}/login`,
-              request.nextUrl.origin,
-            );
-
-          loginUrl.searchParams.set(
-            "callbackUrl",
-            pathname,
-          );
-
-          return NextResponse.redirect(
-            loginUrl,
-          );
-        }
+        loginUrl.searchParams.set("callbackUrl", pathname);
+        return NextResponse.redirect(loginUrl);
       }
     }
+  }
 
-    return NextResponse.next();
-  },
-);
+  return NextResponse.next();
+});
 
 export const config = {
-  matcher: [
-    "/dashboard/:path*",
-    "/public/:path*",
-  ],
+  matcher: ["/dashboard/:path*", "/public/:path*"],
 };

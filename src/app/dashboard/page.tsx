@@ -610,7 +610,7 @@ export default async function DashboardPage() {
         {/* =================================================
             FOOTER
         ================================================== */}
-        <footer className="flex flex-col gap-3 py-8 text-xs text-black/30 sm:flex-row sm:items-center sm:justify-between">
+        {/* <footer className="flex flex-col gap-3 py-8 text-xs text-black/30 sm:flex-row sm:items-center sm:justify-between">
           <p>
             © {new Date().getFullYear()} BadgeFlow. All rights
             reserved.
@@ -620,7 +620,7 @@ export default async function DashboardPage() {
             <ShieldCheck className="h-3.5 w-3.5" />
             Secure Admin Workspace
           </div>
-        </footer>
+        </footer> */}
       </div>
     </main>
   );

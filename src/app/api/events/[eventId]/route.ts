@@ -1,6 +1,5 @@
 import mongoose from "mongoose";
 import { NextResponse } from "next/server";
-
 import { auth } from "@/auth";
 import { connectDB } from "@/lib/mongodb";
 import Attendee from "@/models/Attendee";
@@ -8,19 +7,16 @@ import BadgeConfig from "@/models/BadgeConfig";
 import Event, {
   type EventStatus,
 } from "@/models/Event";
-
 interface RouteContext {
   params: Promise<{
     eventId: string;
   }>;
 }
-
 const VALID_STATUSES: EventStatus[] = [
   "draft",
   "active",
   "completed",
 ];
-
 function createResponse(
   body: Record<string, unknown>,
   status = 200,
@@ -37,13 +33,11 @@ function createResponse(
     },
   });
 }
-
 function isValidObjectId(
   value: string,
 ): boolean {
   return mongoose.isValidObjectId(value);
 }
-
 function serializeEvent(event: any) {
   return {
     _id: event._id.toString(),
@@ -70,7 +64,6 @@ function serializeEvent(event: any) {
       : null,
   };
 }
-
 /*
  * GET
  *
@@ -83,7 +76,6 @@ export async function GET(
 ) {
   try {
     const session = await auth();
-
     if (!session?.user?.id) {
       return createResponse(
         {
@@ -93,10 +85,8 @@ export async function GET(
         401,
       );
     }
-
     const { eventId } =
       await context.params;
-
     if (!eventId) {
       return createResponse(
         {
@@ -106,7 +96,6 @@ export async function GET(
         400,
       );
     }
-
     if (!isValidObjectId(eventId)) {
       return createResponse(
         {
@@ -116,14 +105,11 @@ export async function GET(
         400,
       );
     }
-
     await connectDB();
-
     const event = await Event.findOne({
       _id: eventId,
       createdBy: session.user.id,
     }).lean();
-
     if (!event) {
       return createResponse(
         {
@@ -134,7 +120,6 @@ export async function GET(
         404,
       );
     }
-
     return createResponse({
       success: true,
       event: serializeEvent(event),
@@ -144,7 +129,6 @@ export async function GET(
       "GET event error:",
       error,
     );
-
     return createResponse(
       {
         success: false,
@@ -154,7 +138,6 @@ export async function GET(
     );
   }
 }
-
 /*
  * PATCH
  *
@@ -168,8 +151,9 @@ export async function GET(
  * portal URL is generated, it remains
  * permanent.
  *
- * slug and code are also intentionally
- * protected from this endpoint.
+ * slug and publicId remain protected.
+ * Event code can be changed after checking
+ * format and uniqueness.
  */
 export async function PATCH(
   request: Request,
@@ -177,7 +161,6 @@ export async function PATCH(
 ) {
   try {
     const session = await auth();
-
     if (!session?.user?.id) {
       return createResponse(
         {
@@ -187,10 +170,8 @@ export async function PATCH(
         401,
       );
     }
-
     const { eventId } =
       await context.params;
-
     if (!eventId) {
       return createResponse(
         {
@@ -200,7 +181,6 @@ export async function PATCH(
         400,
       );
     }
-
     if (!isValidObjectId(eventId)) {
       return createResponse(
         {
@@ -210,9 +190,7 @@ export async function PATCH(
         400,
       );
     }
-
     let body: Record<string, unknown>;
-
     try {
       body = await request.json();
     } catch {
@@ -224,9 +202,7 @@ export async function PATCH(
         400,
       );
     }
-
     await connectDB();
-
     /*
      * Always verify ownership before updating.
      */
@@ -235,7 +211,6 @@ export async function PATCH(
         _id: eventId,
         createdBy: session.user.id,
       });
-
     if (!existingEvent) {
       return createResponse(
         {
@@ -246,7 +221,6 @@ export async function PATCH(
         404,
       );
     }
-
     /*
      * Build the update object explicitly.
      *
@@ -269,7 +243,48 @@ export async function PATCH(
       string,
       unknown
     > = {};
-
+    /*
+     * EVENT CODE
+     *
+     * Keep it uppercase alphanumeric and unique.
+     * The event's publicId and slug are unchanged.
+     */
+    if (
+      Object.prototype.hasOwnProperty.call(
+        body,
+        "code",
+      )
+    ) {
+      const code =
+        typeof body.code === "string"
+          ? body.code.trim().toUpperCase()
+          : "";
+      if (!/^[A-Z0-9]{3,30}$/.test(code)) {
+        return createResponse(
+          {
+            success: false,
+            message:
+              "Event code must contain 3–30 letters or numbers.",
+          },
+          400,
+        );
+      }
+      const codeInUse = await Event.findOne({
+        code,
+        _id: { $ne: existingEvent._id },
+      }).select("_id").lean();
+      if (codeInUse) {
+        return createResponse(
+          {
+            success: false,
+            message:
+              "This event code is already in use. Please choose another code.",
+          },
+          409,
+        );
+      }
+      update.code = code;
+    }
     /*
      * NAME
      */
@@ -283,7 +298,6 @@ export async function PATCH(
         typeof body.name === "string"
           ? body.name.trim()
           : "";
-
       if (!name) {
         return createResponse(
           {
@@ -294,7 +308,6 @@ export async function PATCH(
           400,
         );
       }
-
       if (name.length > 200) {
         return createResponse(
           {
@@ -305,10 +318,8 @@ export async function PATCH(
           400,
         );
       }
-
       update.name = name;
     }
-
     /*
      * DESCRIPTION
      */
@@ -323,7 +334,6 @@ export async function PATCH(
         "string"
           ? body.description.trim()
           : "";
-
       if (description.length > 5000) {
         return createResponse(
           {
@@ -334,11 +344,9 @@ export async function PATCH(
           400,
         );
       }
-
       update.description =
         description;
     }
-
     /*
      * LOCATION
      */
@@ -353,7 +361,6 @@ export async function PATCH(
         "string"
           ? body.location.trim()
           : "";
-
       if (location.length > 500) {
         return createResponse(
           {
@@ -364,10 +371,8 @@ export async function PATCH(
           400,
         );
       }
-
       update.location = location;
     }
-
     /*
      * STATUS
      */
@@ -392,11 +397,9 @@ export async function PATCH(
           400,
         );
       }
-
       update.status =
         body.status as EventStatus;
     }
-
     /*
      * START DATE
      */
@@ -404,12 +407,10 @@ export async function PATCH(
       | Date
       | null
       | undefined = undefined;
-
     let nextEndDate:
       | Date
       | null
       | undefined = undefined;
-
     if (
       Object.prototype.hasOwnProperty.call(
         body,
@@ -427,7 +428,6 @@ export async function PATCH(
         const parsedDate = new Date(
           body.startDate,
         );
-
         if (
           Number.isNaN(
             parsedDate.getTime(),
@@ -442,7 +442,6 @@ export async function PATCH(
             400,
           );
         }
-
         nextStartDate = parsedDate;
       } else {
         return createResponse(
@@ -454,11 +453,9 @@ export async function PATCH(
           400,
         );
       }
-
       update.startDate =
         nextStartDate;
     }
-
     /*
      * END DATE
      */
@@ -479,7 +476,6 @@ export async function PATCH(
         const parsedDate = new Date(
           body.endDate,
         );
-
         if (
           Number.isNaN(
             parsedDate.getTime(),
@@ -494,7 +490,6 @@ export async function PATCH(
             400,
           );
         }
-
         nextEndDate = parsedDate;
       } else {
         return createResponse(
@@ -506,11 +501,9 @@ export async function PATCH(
           400,
         );
       }
-
       update.endDate =
         nextEndDate;
     }
-
     /*
      * DATE RANGE VALIDATION
      *
@@ -525,7 +518,6 @@ export async function PATCH(
               existingEvent.startDate,
             )
           : null;
-
     const finalEndDate =
       nextEndDate !== undefined
         ? nextEndDate
@@ -534,7 +526,6 @@ export async function PATCH(
               existingEvent.endDate,
             )
           : null;
-
     if (
       finalStartDate &&
       finalEndDate &&
@@ -550,7 +541,6 @@ export async function PATCH(
         400,
       );
     }
-
     /*
      * Nothing editable was supplied.
      */
@@ -566,7 +556,6 @@ export async function PATCH(
         400,
       );
     }
-
     /*
      * Update only the explicitly allowed
      * fields.
@@ -585,7 +574,6 @@ export async function PATCH(
           runValidators: true,
         },
       ).lean();
-
     if (!updatedEvent) {
       return createResponse(
         {
@@ -596,7 +584,6 @@ export async function PATCH(
         404,
       );
     }
-
     return createResponse({
       success: true,
       message:
@@ -609,7 +596,23 @@ export async function PATCH(
       "PATCH event error:",
       error,
     );
-
+    // Handles a duplicate-code race if two admins save
+    // the same code at nearly the same time.
+    if (
+      typeof error === "object" &&
+      error !== null &&
+      "code" in error &&
+      error.code === 11000
+    ) {
+      return createResponse(
+        {
+          success: false,
+          message:
+            "This event code is already in use. Please choose another code.",
+        },
+        409,
+      );
+    }
     return createResponse(
       {
         success: false,
@@ -620,7 +623,6 @@ export async function PATCH(
     );
   }
 }
-
 /*
  * DELETE
  *
@@ -639,7 +641,6 @@ export async function DELETE(
 ) {
   try {
     const session = await auth();
-
     if (!session?.user?.id) {
       return createResponse(
         {
@@ -649,10 +650,8 @@ export async function DELETE(
         401,
       );
     }
-
     const { eventId } =
       await context.params;
-
     if (!eventId) {
       return createResponse(
         {
@@ -662,7 +661,6 @@ export async function DELETE(
         400,
       );
     }
-
     if (!isValidObjectId(eventId)) {
       return createResponse(
         {
@@ -672,9 +670,7 @@ export async function DELETE(
         400,
       );
     }
-
     await connectDB();
-
     /*
      * Verify ownership first.
      */
@@ -682,7 +678,6 @@ export async function DELETE(
       _id: eventId,
       createdBy: session.user.id,
     }).lean();
-
     if (!event) {
       return createResponse(
         {
@@ -693,7 +688,6 @@ export async function DELETE(
         404,
       );
     }
-
     /*
      * Use a MongoDB transaction so the
      * event and its related records are
@@ -701,7 +695,6 @@ export async function DELETE(
      */
     const mongoSession =
       await mongoose.startSession();
-
     try {
       await mongoSession.withTransaction(
         async () => {
@@ -717,7 +710,6 @@ export async function DELETE(
               session: mongoSession,
             },
           );
-
           /*
            * Delete the badge configuration.
            */
@@ -729,7 +721,6 @@ export async function DELETE(
               session: mongoSession,
             },
           );
-
           /*
            * Delete the event itself.
            *
@@ -747,7 +738,6 @@ export async function DELETE(
                 session: mongoSession,
               },
             );
-
           if (
             deleteResult.deletedCount !== 1
           ) {
@@ -760,7 +750,6 @@ export async function DELETE(
     } finally {
       await mongoSession.endSession();
     }
-
     return createResponse({
       success: true,
       message:
@@ -772,7 +761,6 @@ export async function DELETE(
       "DELETE event error:",
       error,
     );
-
     return createResponse(
       {
         success: false,
