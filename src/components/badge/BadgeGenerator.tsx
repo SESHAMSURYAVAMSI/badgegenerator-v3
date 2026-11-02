@@ -1,8 +1,6 @@
 "use client";
 
-import {
-  useState,
-} from "react";
+import { useMemo, useState } from "react";
 
 import {
   CheckCircle2,
@@ -25,8 +23,7 @@ import type {
   BadgePreviewAttendee,
 } from "@/types/badge";
 
-interface BadgeGeneratorAttendee
-  extends BadgePreviewAttendee {
+interface BadgeGeneratorAttendee extends BadgePreviewAttendee {
   _id: string;
   email?: string;
   badgeGenerated?: boolean;
@@ -43,52 +40,54 @@ interface BadgeGeneratorProps {
 }
 
 const EXPORT_SCALE = 3;
+const WORKER_COUNT = 3;
 
-function sanitizeFileName(
-  value: string,
-): string {
-  return value
-    .trim()
-    .replace(
-      /[^a-zA-Z0-9-_]+/g,
-      "-",
-    )
-    .replace(
-      /-+/g,
-      "-",
-    )
-    .replace(
-      /^-|-$/g,
-      "",
-    )
-    .toLowerCase();
+function sanitizeFileName(value: string): string {
+  return (
+    value
+      .trim()
+      .replace(/[^a-zA-Z0-9-_]+/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-|-$/g, "")
+      .toLowerCase() || "badge"
+  );
+}
+
+function downloadBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = filename;
+
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+
+  // Give the browser time to start the download before revoking.
+  window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 async function markBadgeGenerated(
   attendeeId: string,
   eventId: string,
 ): Promise<void> {
-  const response =
-    await fetch(
-      `/api/events/${eventId}/attendees`,
-      {
-        method: "PATCH",
-        headers: {
-          "Content-Type":
-            "application/json",
-        },
-        body: JSON.stringify({
-          attendeeId,
-          badgeGenerated: true,
-        }),
+  const response = await fetch(
+    `/api/events/${eventId}/attendees`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
       },
-    );
+      body: JSON.stringify({
+        attendeeId,
+        badgeGenerated: true,
+      }),
+    },
+  );
 
   if (!response.ok) {
-    const data =
-      await response
-        .json()
-        .catch(() => null);
+    const data = await response.json().catch(() => null);
 
     throw new Error(
       data?.message ||
@@ -97,146 +96,153 @@ async function markBadgeGenerated(
   }
 }
 
+async function markBadgesGenerated(
+  eventId: string,
+  attendeeIds: string[],
+): Promise<void> {
+  if (attendeeIds.length === 0) return;
+
+  const response = await fetch(
+    `/api/events/${eventId}/attendees/badge-status`,
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        attendeeIds,
+      }),
+    },
+  );
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    throw new Error(
+      data?.message ||
+        "Badges were rendered, but their generation status could not be saved.",
+    );
+  }
+}
+
+/**
+ * Runs tasks using a fixed number of workers.
+ * This prevents all badge canvases from being rendered simultaneously.
+ */
+async function runWithConcurrency<T>(
+  items: T[],
+  concurrency: number,
+  task: (item: T, index: number) => Promise<void>,
+): Promise<void> {
+  let nextIndex = 0;
+
+  const worker = async () => {
+    while (true) {
+      const currentIndex = nextIndex++;
+
+      if (currentIndex >= items.length) return;
+
+      await task(items[currentIndex], currentIndex);
+    }
+  };
+
+  const workers = Array.from(
+    {
+      length: Math.min(concurrency, items.length),
+    },
+    () => worker(),
+  );
+
+  await Promise.all(workers);
+}
+
 export default function BadgeGenerator({
   eventId,
   config,
   attendees,
   selectedAttendeeId,
 }: BadgeGeneratorProps) {
-  const [isGenerating, setIsGenerating] =
-    useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingAll, setIsGeneratingAll] = useState(false);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [generatedInSession, setGeneratedInSession] = useState(0);
 
-  const [isGeneratingAll, setIsGeneratingAll] =
-    useState(false);
+  const selectedAttendee = useMemo(
+    () =>
+      attendees.find(
+        (attendee) => attendee._id === selectedAttendeeId,
+      ),
+    [attendees, selectedAttendeeId],
+  );
 
-  const [statusMessage, setStatusMessage] =
-    useState("");
+  const generatedCount = attendees.filter(
+    (attendee) => attendee.badgeGenerated,
+  ).length;
 
-  const [generatedInSession, setGeneratedInSession] =
-    useState(0);
+  const pendingCount = attendees.length - generatedCount;
 
-  const selectedAttendee =
-    attendees.find(
-      (attendee) =>
-        attendee._id ===
-        selectedAttendeeId,
-    );
-
-  const generatedCount =
-    attendees.filter(
-      (attendee) =>
-        attendee.badgeGenerated,
-    ).length;
-
-  const pendingCount =
-    attendees.length -
-    generatedCount;
-
-  async function generateSingleBadge(
-    attendee: BadgeGeneratorAttendee,
-    shouldDownload = true,
-  ): Promise<Blob> {
-    const blob =
-      await renderBadgeToPngBlob({
-        config,
-        attendee,
-        scale: EXPORT_SCALE,
-      });
-
-    if (shouldDownload) {
-      const url =
-        URL.createObjectURL(
-          blob,
-        );
-
-      const anchor =
-        document.createElement(
-          "a",
-        );
-
-      const baseName =
-        sanitizeFileName(
-          attendee.registrationNumber ||
-            attendee.name ||
-            "badge",
-        );
-
-      anchor.href = url;
-
-      anchor.download =
-        `${baseName}-high-resolution.png`;
-
-      document.body.appendChild(
-        anchor,
-      );
-
-      anchor.click();
-
-      anchor.remove();
-
-      URL.revokeObjectURL(
-        url,
-      );
-    }
-
-    if (eventId) {
-      await markBadgeGenerated(
-        attendee._id,
-        eventId,
-      );
-    }
-
-    return blob;
-  }
-
-  async function handleGenerateSingle() {
-    if (!selectedAttendee) {
-      setStatusMessage(
-        "Please select an attendee first.",
-      );
-
-      return;
+  function validateGeneration(): boolean {
+    if (!eventId) {
+      setStatusMessage("Event ID is missing.");
+      return false;
     }
 
     if (!config.backgroundImage) {
       setStatusMessage(
         "Please upload and save a badge template first.",
       );
+      return false;
+    }
 
+    if (attendees.length === 0) {
+      setStatusMessage("There are no attendees.");
+      return false;
+    }
+
+    return true;
+  }
+
+  async function generateSingleBadge(
+    attendee: BadgeGeneratorAttendee,
+  ): Promise<void> {
+    const blob = await renderBadgeToPngBlob({
+      config,
+      attendee,
+      scale: EXPORT_SCALE,
+    });
+
+    const baseName = sanitizeFileName(
+      attendee.registrationNumber || attendee.name || "badge",
+    );
+
+    downloadBlob(
+      blob,
+      `${baseName}-high-resolution.png`,
+    );
+
+    await markBadgeGenerated(attendee._id, eventId);
+  }
+
+  async function handleGenerateSingle(): Promise<void> {
+    if (!selectedAttendee) {
+      setStatusMessage("Please select an attendee first.");
       return;
     }
 
-    if (!eventId) {
-      setStatusMessage(
-        "Event ID is missing.",
-      );
-
-      return;
-    }
+    if (!validateGeneration()) return;
 
     try {
       setIsGenerating(true);
+      setStatusMessage("Rendering high-resolution badge...");
 
-      setStatusMessage(
-        "Rendering high-resolution badge...",
-      );
+      await generateSingleBadge(selectedAttendee);
 
-      await generateSingleBadge(
-        selectedAttendee,
-      );
-
-      setGeneratedInSession(
-        (value) => value + 1,
-      );
-
+      setGeneratedInSession((value) => value + 1);
       setStatusMessage(
         `${selectedAttendee.name}'s badge was generated successfully.`,
       );
     } catch (error) {
-      console.error(
-        "Single badge generation failed:",
-        error,
-      );
+      console.error("Single badge generation failed:", error);
 
       setStatusMessage(
         error instanceof Error
@@ -248,78 +254,67 @@ export default function BadgeGenerator({
     }
   }
 
-  async function handleGenerateAll() {
-    if (
-      attendees.length ===
-      0
-    ) {
-      setStatusMessage(
-        "There are no attendees to generate badges for.",
-      );
-
-      return;
-    }
-
-    if (!config.backgroundImage) {
-      setStatusMessage(
-        "Please upload and save a badge template first.",
-      );
-
-      return;
-    }
-
-    if (!eventId) {
-      setStatusMessage(
-        "Event ID is missing.",
-      );
-
-      return;
-    }
+  async function handleGenerateAll(): Promise<void> {
+    if (!validateGeneration()) return;
 
     try {
       setIsGeneratingAll(true);
-
-      setStatusMessage(
-        "Generating badges...",
-      );
+      setStatusMessage("Starting badge generation...");
 
       let completed = 0;
+      const successfulIds: string[] = [];
+      const failedNames: string[] = [];
 
-      for (
-        const attendee of attendees
-      ) {
-        try {
-          await generateSingleBadge(
-            attendee,
-            false,
-          );
+      await runWithConcurrency(
+        attendees,
+        WORKER_COUNT,
+        async (attendee) => {
+          try {
+            // Render the badge without downloading or saving each PNG.
+            await renderBadgeToPngBlob({
+              config,
+              attendee,
+              scale: EXPORT_SCALE,
+            });
 
-          completed += 1;
+            successfulIds.push(attendee._id);
+          } catch (error) {
+            console.error(
+              `Failed to generate badge for ${attendee.name}:`,
+              error,
+            );
 
-          setStatusMessage(
-            `Generated ${completed} of ${attendees.length} badges...`,
-          );
-        } catch (error) {
-          console.error(
-            `Failed to generate badge for ${attendee.name}:`,
-            error,
-          );
-        }
+            failedNames.push(attendee.name);
+          } finally {
+            completed += 1;
+
+            setStatusMessage(
+              `Rendered ${completed} of ${attendees.length} badges...`,
+            );
+          }
+        },
+      );
+
+      if (successfulIds.length > 0) {
+        setStatusMessage(
+          `Saving status for ${successfulIds.length} generated badges...`,
+        );
+
+        await markBadgesGenerated(eventId, successfulIds);
       }
 
       setGeneratedInSession(
-        (value) =>
-          value + completed,
+        (value) => value + successfulIds.length,
       );
 
       setStatusMessage(
-        `Completed ${completed} of ${attendees.length} badge generations.`,
+        `Completed ${successfulIds.length} of ${attendees.length} badges.` +
+          (failedNames.length > 0
+            ? ` ${failedNames.length} failed: ${failedNames.slice(0, 5).join(", ")}${failedNames.length > 5 ? "..." : ""}.`
+            : ""),
       );
     } catch (error) {
-      console.error(
-        "Bulk generation failed:",
-        error,
-      );
+      console.error("Bulk generation failed:", error);
 
       setStatusMessage(
         error instanceof Error
@@ -331,133 +326,94 @@ export default function BadgeGenerator({
     }
   }
 
-  async function handleDownloadZip() {
-    if (
-      attendees.length ===
-      0
-    ) {
-      setStatusMessage(
-        "There are no attendees.",
-      );
-
-      return;
-    }
-
-    if (!config.backgroundImage) {
-      setStatusMessage(
-        "Please upload and save a badge template first.",
-      );
-
-      return;
-    }
-
-    if (!eventId) {
-      setStatusMessage(
-        "Event ID is missing.",
-      );
-
-      return;
-    }
+  async function handleDownloadZip(): Promise<void> {
+    if (!validateGeneration()) return;
 
     try {
       setIsGeneratingAll(true);
+      setStatusMessage("Preparing ZIP file...");
 
-      setStatusMessage(
-        "Preparing ZIP file...",
-      );
-
-      const zip =
-        new JSZip();
+      const zip = new JSZip();
 
       let completed = 0;
+      const successfulIds: string[] = [];
+      const failedNames: string[] = [];
+      const usedNames = new Set<string>();
 
-      for (
-        const attendee of attendees
-      ) {
-        try {
-          const blob =
-            await generateSingleBadge(
+      await runWithConcurrency(
+        attendees,
+        WORKER_COUNT,
+        async (attendee) => {
+          try {
+            const blob = await renderBadgeToPngBlob({
+              config,
               attendee,
-              false,
+              scale: EXPORT_SCALE,
+            });
+
+            const baseName = sanitizeFileName(
+              attendee.registrationNumber || attendee.name || "badge",
             );
 
-          const arrayBuffer =
-            await blob.arrayBuffer();
+            let filename = `${baseName}-high-resolution.png`;
+            let suffix = 2;
 
-          const baseName =
-            sanitizeFileName(
-              attendee.registrationNumber ||
-                attendee.name ||
-                "badge",
+            while (usedNames.has(filename)) {
+              filename = `${baseName}-${suffix}-high-resolution.png`;
+              suffix += 1;
+            }
+
+            usedNames.add(filename);
+
+            zip.file(filename, blob);
+            successfulIds.push(attendee._id);
+          } catch (error) {
+            console.error(
+              `Failed to add ${attendee.name} to ZIP:`,
+              error,
             );
 
-          zip.file(
-            `${baseName}-high-resolution.png`,
-            arrayBuffer,
-          );
+            failedNames.push(attendee.name);
+          } finally {
+            completed += 1;
 
-          completed += 1;
+            setStatusMessage(
+              `Preparing ${completed} of ${attendees.length} badges...`,
+            );
+          }
+        },
+      );
 
-          setStatusMessage(
-            `Preparing ${completed} of ${attendees.length} badges...`,
-          );
-        } catch (error) {
-          console.error(
-            `Failed to add ${attendee.name} to ZIP:`,
-            error,
-          );
-        }
+      if (successfulIds.length === 0) {
+        throw new Error("No badges could be generated.");
       }
 
-      const zipBlob =
-        await zip.generateAsync({
-          type: "blob",
-          compression: "DEFLATE",
-          compressionOptions: {
-            level: 6,
-          },
-        });
+      setStatusMessage("Creating ZIP archive...");
 
-      const url =
-        URL.createObjectURL(
-          zipBlob,
-        );
+      const zipBlob = await zip.generateAsync({
+        type: "blob",
+        compression: "STORE",
+      });
 
-      const anchor =
-        document.createElement(
-          "a",
-        );
-
-      anchor.href = url;
-
-      anchor.download =
-        "badgeflow-high-resolution-badges.zip";
-
-      document.body.appendChild(
-        anchor,
+      downloadBlob(
+        zipBlob,
+        "badgeflow-high-resolution-badges.zip",
       );
 
-      anchor.click();
-
-      anchor.remove();
-
-      URL.revokeObjectURL(
-        url,
-      );
+      await markBadgesGenerated(eventId, successfulIds);
 
       setGeneratedInSession(
-        (value) =>
-          value + completed,
+        (value) => value + successfulIds.length,
       );
 
       setStatusMessage(
-        `ZIP created successfully with ${completed} badges.`,
+        `ZIP created successfully with ${successfulIds.length} badges.` +
+          (failedNames.length > 0
+            ? ` ${failedNames.length} badges failed.`
+            : ""),
       );
     } catch (error) {
-      console.error(
-        "ZIP generation failed:",
-        error,
-      );
+      console.error("ZIP generation failed:", error);
 
       setStatusMessage(
         error instanceof Error
@@ -469,132 +425,97 @@ export default function BadgeGenerator({
     }
   }
 
-  async function handleDownloadPdf() {
-    if (
-      attendees.length ===
-      0
-    ) {
-      setStatusMessage(
-        "There are no attendees.",
-      );
-
-      return;
-    }
-
-    if (!config.backgroundImage) {
-      setStatusMessage(
-        "Please upload and save a badge template first.",
-      );
-
-      return;
-    }
-
-    if (!eventId) {
-      setStatusMessage(
-        "Event ID is missing.",
-      );
-
-      return;
-    }
+  async function handleDownloadPdf(): Promise<void> {
+    if (!validateGeneration()) return;
 
     try {
       setIsGeneratingAll(true);
+      setStatusMessage("Preparing PDF...");
 
-      setStatusMessage(
-        "Preparing PDF...",
-      );
+      const pdf = new jsPDF({
+        orientation:
+          config.width >= config.height
+            ? "landscape"
+            : "portrait",
+        unit: "px",
+        format: [config.width, config.height],
+        compress: true,
+      });
 
-      const firstCanvas =
-        await renderBadgeToCanvas({
-          config,
-          attendee: attendees[0],
-          scale: EXPORT_SCALE,
-        });
+      const successfulIds: string[] = [];
 
-      const pdf =
-        new jsPDF({
-          orientation:
-            config.width >=
-            config.height
-              ? "landscape"
-              : "portrait",
-          unit: "px",
-          format: [
+      for (let index = 0; index < attendees.length; index += 1) {
+        const attendee = attendees[index];
+
+        let canvas: HTMLCanvasElement | null = null;
+
+        try {
+          canvas = await renderBadgeToCanvas({
+            config,
+            attendee,
+            scale: EXPORT_SCALE,
+          });
+
+          const imageData = canvas.toDataURL("image/png");
+
+          if (successfulIds.length > 0) {
+            pdf.addPage([
+              config.width,
+              config.height,
+            ]);
+          }
+
+          pdf.addImage(
+            imageData,
+            "PNG",
+            0,
+            0,
             config.width,
             config.height,
-          ],
-          compress: true,
-        });
-
-      for (
-        let index = 0;
-        index <
-        attendees.length;
-        index += 1
-      ) {
-        const attendee =
-          attendees[index];
-
-        const canvas =
-          index === 0
-            ? firstCanvas
-            : await renderBadgeToCanvas({
-                config,
-                attendee,
-                scale: EXPORT_SCALE,
-              });
-
-        const imageData =
-          canvas.toDataURL(
-            "image/png",
-            1,
+            undefined,
+            "FAST",
           );
 
-        if (index > 0) {
-          pdf.addPage([
-            config.width,
-            config.height,
-          ]);
+          successfulIds.push(attendee._id);
+        } catch (error) {
+          console.error(
+            `Failed to create PDF page for ${attendee.name}:`,
+            error,
+          );
+        } finally {
+          if (canvas) {
+            canvas.width = 0;
+            canvas.height = 0;
+          }
+
+          setStatusMessage(
+            `Preparing ${index + 1} of ${attendees.length} PDF pages...`,
+          );
         }
-
-        pdf.addImage(
-          imageData,
-          "PNG",
-          0,
-          0,
-          config.width,
-          config.height,
-          undefined,
-          "NONE",
-        );
-
-        await markBadgeGenerated(
-          attendee._id,
-          eventId,
-        );
-
-        setStatusMessage(
-          `Preparing ${index + 1} of ${attendees.length} PDF pages...`,
-        );
       }
 
-      pdf.save(
+      if (successfulIds.length === 0) {
+        throw new Error("No PDF pages could be generated.");
+      }
+
+      const pdfBlob = pdf.output("blob");
+
+      downloadBlob(
+        pdfBlob,
         "badgeflow-high-resolution-badges.pdf",
       );
 
+      await markBadgesGenerated(eventId, successfulIds);
+
       setGeneratedInSession(
-        (value) =>
-          value + attendees.length,
+        (value) => value + successfulIds.length,
       );
 
       setStatusMessage(
-        `PDF created successfully with ${attendees.length} badges.`,
+        `PDF created successfully with ${successfulIds.length} badges.`,
       );
     } catch (error) {
-      console.error(
-        "PDF generation failed:",
-        error,
-      );
+      console.error("PDF generation failed:", error);
 
       setStatusMessage(
         error instanceof Error
@@ -606,9 +527,7 @@ export default function BadgeGenerator({
     }
   }
 
-  const busy =
-    isGenerating ||
-    isGeneratingAll;
+  const busy = isGenerating || isGeneratingAll;
 
   return (
     <section className="overflow-hidden rounded-3xl border border-stone-200 bg-white shadow-sm">
@@ -626,8 +545,7 @@ export default function BadgeGenerator({
                 </h2>
 
                 <p className="text-sm text-stone-500">
-                  Generate production-ready
-                  high-resolution badges.
+                  Generate production-ready high-resolution badges.
                 </p>
               </div>
             </div>
@@ -638,7 +556,6 @@ export default function BadgeGenerator({
               <p className="text-[11px] font-semibold uppercase tracking-wide text-stone-400">
                 Total
               </p>
-
               <p className="mt-1 text-lg font-bold text-[#241000]">
                 {attendees.length}
               </p>
@@ -648,7 +565,6 @@ export default function BadgeGenerator({
               <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-600">
                 Generated
               </p>
-
               <p className="mt-1 text-lg font-bold text-emerald-700">
                 {generatedCount}
               </p>
@@ -658,7 +574,6 @@ export default function BadgeGenerator({
               <p className="text-[11px] font-semibold uppercase tracking-wide text-orange-600">
                 Pending
               </p>
-
               <p className="mt-1 text-lg font-bold text-orange-700">
                 {pendingCount}
               </p>
@@ -703,16 +618,11 @@ export default function BadgeGenerator({
                 <button
                   type="button"
                   disabled={busy}
-                  onClick={
-                    handleGenerateSingle
-                  }
+                  onClick={handleGenerateSingle}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#EA580C] px-5 py-3 text-sm font-bold text-white shadow-lg shadow-orange-200 transition hover:bg-[#c2410c] disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {isGenerating ? (
-                    <Loader2
-                      size={17}
-                      className="animate-spin"
-                    />
+                    <Loader2 size={17} className="animate-spin" />
                   ) : selectedAttendee.badgeGenerated ? (
                     <RefreshCw size={17} />
                   ) : (
@@ -728,8 +638,7 @@ export default function BadgeGenerator({
           ) : (
             <div className="py-5 text-center">
               <p className="text-sm font-medium text-stone-500">
-                Select an attendee above to
-                generate an individual badge.
+                Select an attendee above to generate an individual badge.
               </p>
             </div>
           )}
@@ -738,56 +647,35 @@ export default function BadgeGenerator({
         <div className="grid gap-3 sm:grid-cols-3">
           <button
             type="button"
-            disabled={
-              busy ||
-              attendees.length === 0
-            }
-            onClick={
-              handleGenerateAll
-            }
+            disabled={busy || attendees.length === 0}
+            onClick={handleGenerateAll}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm font-bold text-[#241000] transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {isGeneratingAll ? (
-              <Loader2
-                size={17}
-                className="animate-spin"
-              />
+              <Loader2 size={17} className="animate-spin" />
             ) : (
               <Sparkles size={17} />
             )}
-
             Generate All
           </button>
 
           <button
             type="button"
-            disabled={
-              busy ||
-              attendees.length === 0
-            }
-            onClick={
-              handleDownloadZip
-            }
+            disabled={busy || attendees.length === 0}
+            onClick={handleDownloadZip}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm font-bold text-[#241000] transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download size={17} />
-
             Download ZIP
           </button>
 
           <button
             type="button"
-            disabled={
-              busy ||
-              attendees.length === 0
-            }
-            onClick={
-              handleDownloadPdf
-            }
+            disabled={busy || attendees.length === 0}
+            onClick={handleDownloadPdf}
             className="inline-flex items-center justify-center gap-2 rounded-xl border border-stone-200 bg-white px-4 py-3 text-sm font-bold text-[#241000] transition hover:border-orange-300 hover:bg-orange-50 disabled:cursor-not-allowed disabled:opacity-50"
           >
             <Download size={17} />
-
             Download PDF
           </button>
         </div>
@@ -796,14 +684,8 @@ export default function BadgeGenerator({
           <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3">
             <div className="flex items-center gap-2 text-sm font-semibold text-emerald-700">
               <CheckCircle2 size={17} />
-
-              {generatedInSession} badge
-              generation
-              {generatedInSession ===
-              1
-                ? ""
-                : "s"} completed in
-              this session.
+              {generatedInSession} badge generation
+              {generatedInSession === 1 ? "" : "s"} completed in this session.
             </div>
           </div>
         )}
@@ -824,10 +706,9 @@ export default function BadgeGenerator({
               </p>
 
               <p className="mt-1 text-xs leading-5 text-stone-500">
-                Badges are rendered at{" "}
-                {EXPORT_SCALE}× the configured
-                badge dimensions for sharper
-                output.
+                Badges are rendered at {EXPORT_SCALE}× the configured
+                badge dimensions for sharper output. Bulk rendering uses{" "}
+                {WORKER_COUNT} concurrent workers.
               </p>
             </div>
 
